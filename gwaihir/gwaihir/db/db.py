@@ -3,6 +3,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from loguru import logger
+
 
 class RedbookDatabase:
     def __init__(self, db_path: Path = Path('storage/redbook.db')) -> None:
@@ -29,22 +31,28 @@ class RedbookDatabase:
         with self.connect() as conn:
             conn.execute(query, params)
 
-    def insert_document(self, title: str, url: str, raw_content: str) -> int | None:
+    def insert_document(self, title: str, url: str, raw_content: str) -> int:
         insert_query = """
         INSERT INTO documents (title, url, raw_content)
         VALUES (?, ?, ?);
         """
         with self.connect() as conn:
             cursor = conn.execute(insert_query, (title, url, raw_content))
+            if cursor.lastrowid is None:
+                logger.warning('Failed to insert document: lastrowid is None')
+                return -1
             return cursor.lastrowid
 
-    def insert_chunk(self, document_id: int, chunk_index: int, content: str, token_count: int) -> int | None:
+    def insert_chunk(self, document_id: int, chunk_index: int, content: str, token_count: int) -> int:
         insert_query = """
         INSERT INTO chunks (document_id, chunk_index, content, token_count)
         VALUES (?, ?, ?, ?);
         """
         with self.connect() as conn:
             cursor = conn.execute(insert_query, (document_id, chunk_index, content, token_count))
+            if cursor.lastrowid is None:
+                logger.warning('Failed to insert document: lastrowid is None')
+                return -1
             return cursor.lastrowid
 
     def _create_documents_table(self) -> None:
