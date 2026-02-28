@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
+from urllib.parse import quote
 
-import httpx
+from curl_cffi import requests as curl_requests
 from loguru import logger
 
 from gwaihir.db.db import RedbookDatabase
@@ -28,152 +30,167 @@ class TolkienGatewayClient:
         batch_size: Number of pages to accumulate before flushing to the database.
     """
 
-    API_PATH: str = '/w/api.php'
-
     def __init__(
         self,
         base_url: str,
         db: RedbookDatabase,
-        batch_size: int = 50,
+        batch_size: int = 25,
+        timeout_seconds: float = 30,
     ) -> None:
-        self.base_url = base_url
+        self.base_url = base_url.rstrip('/')
+        self.api_url = f'{self.base_url}/w/api.php'
         self.db = db
         self.batch_size = batch_size
-        self._buffer: list[Page] = []
-        default_headers = {
-            'User-Agent': 'gwaihir-client/0.1 (https://github.com/lembasaservice/gwaihir; polite-bot)',
-        }
-        self._client = httpx.AsyncClient(base_url=base_url, headers=default_headers, timeout=30.0)
-
-    async def close(self) -> None:
-        await self._client.aclose()
-
-    # -- public API -----------------------------------------------------------
-
-    async def get_index(
-        self,
-        namespace: int = 0,
-        filter_redirects: str = 'nonredirects',
-        limit: int | str = 'max',
-    ) -> list[dict]:
-        """Return a list of *all* page stubs (pageid + title) in the given namespace.
-
-        Uses the ``list=allpages`` query module with automatic continuation.
-
-        Args:
-            namespace: MediaWiki namespace id (0 = main articles).
-            filter_redirects: Filter for redirects (all, nonredirects, redirects).
-            limit: Max pages per request batch, or ``'max'`` for the server maximum.
-        """
-        pages: list[dict] = []
-        params: dict = {
-            'action': 'query',
-            'list': 'allpages',
-            'apnamespace': namespace,
-            'apfilterredir': filter_redirects,
-            'aplimit': limit,
-            'format': 'json',
-        }
-
-        while True:
-            resp = await self._client.get(self.API_PATH, params=params)
-            resp.raise_for_status()
-            data = resp.json()
-
-            pages.extend(data.get('query', {}).get('allpages', []))
-
-            if 'continue' not in data:
-                break
-            params.update(data['continue'])
-
-        logger.info('Fetched index: {} pages', len(pages))
-        return pages
-
-    async def get_page(self, title: str) -> Page | None:
-        """Fetch the parsed wikitext content of a single page by *title*.
-
-        Returns ``None`` when the page cannot be parsed (e.g. missing page).
-        """
-        params = {
-            'action': 'parse',
-            'page': title,
-            'prop': 'wikitext',
-            'format': 'json',
-        }
-
-        resp = await self._client.get(self.API_PATH, params=params)
-        resp.raise_for_status()
-        data = resp.json()
-
-        if 'error' in data:
-            logger.warning('Failed to fetch page "{}": {}', title, data['error'].get('info', ''))
-            return None
-
-        parse = data.get('parse', {})
-        page_title = parse.get('title', title)
-        return Page(
-            title=page_title,
-            pageid=parse.get('pageid', -1),
-            url=f'{self.base_url}/wiki/{page_title}',
-            content=parse.get('wikitext', {}).get('*', ''),
+        self.timeout_seconds = timeout_seconds
+        self._pending_pages: list[Page] = []
+        logger.info(
+            f'Initialized TolkienGatewayClient(base_url={self.base_url}, '
+            f'batch_size={self.batch_size}, timeout_seconds={self.timeout_seconds})'
         )
 
-    # -- batched storage ------------------------------------------------------
+    def _request_json(self, params: dict[str, str]) -> dict:
+        logger.debug(f'Requesting MediaWiki API: {self.api_url} params={params}')
+        response = curl_requests.get(
+            self.api_url,
+            params=params,
+            impersonate='chrome',
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if 'error' in payload:
+            raise RuntimeError(f'MediaWiki API error: {payload["error"]}')
+        return payload
 
-    def _enqueue(self, page: Page) -> None:
-        """Add a page to the internal buffer; flush when ``batch_size`` is reached."""
-        self._buffer.append(page)
-        if len(self._buffer) >= self.batch_size:
-            self._flush()
+    def _build_page_url(self, title: str) -> str:
+        return f'{self.base_url}/wiki/{quote(title.replace(" ", "_"))}'
 
-    def _flush(self) -> None:
-        """Write all buffered pages to the database in a single connection."""
-        if not self._buffer:
-            return
+    def get_index(self, limit: int | None = None) -> list[dict[str, int | str]]:
+        logger.info(f'Fetching page index with limit={limit}')
+        pages: list[dict[str, int | str]] = []
+        next_continue: str | None = None
 
-        with self.db.connect() as conn:
-            for page in self._buffer:
-                conn.execute(
-                    'INSERT INTO documents (title, url, raw_content) VALUES (?, ?, ?);',
-                    (page.title, page.url, page.content),
+        while True:
+            remaining = None if limit is None else limit - len(pages)
+            if remaining is not None and remaining <= 0:
+                break
+
+            params: dict[str, str] = {
+                'action': 'query',
+                'format': 'json',
+                'list': 'allpages',
+                'aplimit': str(min(500, remaining) if remaining is not None else 500),
+            }
+            if next_continue is not None:
+                params['apcontinue'] = next_continue
+
+            payload = self._request_json(params)
+            allpages = payload.get('query', {}).get('allpages', [])
+            logger.debug(f'Fetched {len(allpages)} index entries in current page')
+            for item in allpages:
+                title = item['title']
+                pages.append(
+                    {
+                        'title': title,
+                        'pageid': int(item['pageid']),
+                        'url': self._build_page_url(title),
+                    }
                 )
-        logger.info('Flushed {} pages to database', len(self._buffer))
-        self._buffer.clear()
+                if limit is not None and len(pages) >= limit:
+                    break
 
-    # -- crawl ----------------------------------------------------------------
+            next_continue = payload.get('continue', {}).get('apcontinue')
+            if not next_continue:
+                break
+
+        logger.info(f'Fetched {len(pages)} total index entries')
+        return pages
+
+    def get_page(self, title: str) -> Page:
+        logger.debug(f'Fetching page content for title={title}')
+        payload = self._request_json(
+            {
+                'action': 'parse',
+                'format': 'json',
+                'page': title,
+                'prop': 'text',
+                'disablelimitreport': '1',
+                'disableeditsection': '1',
+                'disablestylededuplication': '1',
+            }
+        )
+        parsed = payload.get('parse', {})
+        if not parsed:
+            raise RuntimeError(f'Could not parse page: {title}')
+
+        pageid = int(parsed.get('pageid', -1))
+        parsed_title = str(parsed.get('title', title))
+        content = parsed.get('text', {}).get('*', '')
+        logger.debug(f'Fetched page title={parsed_title} pageid={pageid} content_len={len(content)}')
+        return Page(
+            title=parsed_title,
+            pageid=pageid,
+            url=self._build_page_url(parsed_title),
+            content=content,
+        )
+
+    def store_page(self, page: Page) -> None:
+        self._pending_pages.append(page)
+        logger.debug(f'Buffered page {page.title} (pending={len(self._pending_pages)}/{self.batch_size})')
+        if len(self._pending_pages) >= self.batch_size:
+            logger.info('Batch size reached; flushing pending pages')
+            self.flush()
+
+    def flush(self) -> int:
+        if not self._pending_pages:
+            logger.debug('Flush called with empty page buffer')
+            return 0
+
+        stored = 0
+        for page in self._pending_pages:
+            self.db.insert_document(page.title, page.url, page.content)
+            stored += 1
+
+        logger.info(f'Flushed {stored} pages to database')
+        self._pending_pages.clear()
+        return stored
 
     async def crawl(
         self,
-        max_concurrent: int = 5,
-        delay: float = 2.0,
-        namespace: int = 0,
-    ) -> None:
-        """Crawl all pages in *namespace* and store them to the database.
+        limit: int | None = None,
+        max_workers: int = 4,
+        pause_seconds: float = 2.0,
+    ) -> int:
+        logger.info(f'Starting crawl(limit={limit}, max_workers={max_workers}, pause_seconds={pause_seconds})')
+        index = self.get_index(limit=limit)
+        logger.info(f'Crawl index contains {len(index)} pages')
+        semaphore = asyncio.Semaphore(max_workers)
 
-        Args:
-            max_concurrent: Maximum number of concurrent fetch tasks.
-            delay: Seconds to wait between launching each request (rate-limit).
-            namespace: MediaWiki namespace id (0 = main articles).
-        """
-        index = await self.get_index(namespace=namespace)
-        semaphore = asyncio.Semaphore(max_concurrent)
-
-        async def _fetch_and_store(title: str) -> None:
+        async def crawl_one(item: dict[str, int | str]) -> None:
             async with semaphore:
-                page = await self.get_page(title)
-                if page is not None:
-                    self._enqueue(page)
+                title = str(item['title'])
+                try:
+                    page = await asyncio.to_thread(self.get_page, title)
+                    self.store_page(page)
+                    logger.debug(f'Stored crawled page {title}')
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f'Failed to fetch page {title}: {exc}')
+                await asyncio.sleep(pause_seconds)
 
-        tasks: list[asyncio.Task] = []
-        for entry in index:
-            title = entry['title']
-            task = asyncio.create_task(_fetch_and_store(title))
-            tasks.append(task)
-            await asyncio.sleep(delay)
+        tasks = [asyncio.create_task(crawl_one(item)) for item in index]
+        if tasks:
+            await asyncio.gather(*tasks)
 
-        await asyncio.gather(*tasks)
+        flushed = self.flush()
+        logger.info(f'Crawl completed; flushed {flushed} remaining pages')
+        return flushed
 
-        # flush remaining buffered pages
-        self._flush()
+    def store_pages(self, pages: Sequence[Page]) -> int:
+        logger.info(f'Storing {len(pages)} pages via buffered store_pages')
+        for page in pages:
+            self.store_page(page)
+        return self.flush()
 
-        logger.info('Crawl complete - processed {} pages', len(index))
+    def close(self) -> None:
+        logger.info('Closing client and flushing pending pages')
+        self.flush()
