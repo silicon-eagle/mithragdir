@@ -1,0 +1,181 @@
+[project]
+name = 'gwaihir'
+version = '0.1.0'
+description = 'Add your description here'
+readme = 'README.md'
+requires-python = '>=3.13'
+dependencies = [
+    "loguru>=0.7.3",
+]
+
+[dependency-groups]
+dev = [
+    'coverage>=7.10.7',
+    'debugpy>=1.8.17',
+    'pyright>=1.1.408',
+    'pytest-asyncio>=1.3.0',
+    'pytest-cov>=7.0.0',
+    'pytest-env>=1.2.0',
+    'pytest>=8.4.2',
+    'ruff>=0.15.1',
+]
+
+
+[build-system]
+requires = ['hatchling']
+build-backend = 'hatchling.build'
+
+# Pytest configuration (adjust coverage targets to your actual packages)
+[tool.pytest.ini_options]
+addopts = [
+    '--cov=gwaihir',
+    '--cov-report=xml',
+    '--junitxml=test-results.xml',
+    '-s', # write logging in the CLI
+    # '-m', # add marks
+    # 'not llm',
+]
+
+testpaths = ['tests']
+filterwarnings = ['ignore::DeprecationWarning']
+markers = [
+    'llm: marks tests that call the LLM / external openai services.',
+    'slow: marks tests as slow.'
+]
+
+pythonpath = ['.', 'gwaihir', 'tests']
+asyncio_mode = 'auto'
+
+[tool.pytest_env]
+DI_UTILS_USER_AGENT = 'gwaihir-client'
+
+
+# Coverage configuration
+[tool.coverage.run]
+branch = true
+source = ['gwaihir']
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+
+# Ruff configuration
+[tool.ruff]
+line-length = 119
+target-version = 'py311'
+src = ['gwaihir', 'tests']
+
+[tool.ruff.format]
+quote-style = 'single'
+indent-style = 'space'
+skip-magic-trailing-comma = false
+line-ending = 'auto'
+
+# Ruff linting configuration, the ruff toml schema is not great, so this might
+# show an error from a toml linter, but it is correct according to ruff's documentation
+[tool.ruff.lint]
+select = [
+    'A',     # flake8-builtins
+    'ANN',   # flake8-annotations
+    'ARG',   # flake8-argparse
+    'B',     # bugbear
+    'BLE',   # checks for blind except: statements
+    'C',     # complexity
+    'D',     # pydocstyle
+    'E',     # flake8 pycodestyle
+    'F',     # flake8 Pyflakes
+    'I',     # isort
+    'INP',   # implicit namespace packages
+    'PLE',   # pylint errors
+    'PLW',   # pylint warnings
+    'PT',    # pytest-style
+    'RET',   # return
+    'SIM',   # simplify
+    'T20',   # print statement checker
+    'W',     # warnings
+    # 'TD003', # missing-todo-link
+    'T', # mypy
+    'W', # pycodestyle
+    'N', # pep8-naming
+    'Q', # flake8-quotes
+    'UP', # pyupgrade
+    'PD', # pandas-vet
+    'FURB', # refurb
+    'PERF', # performance
+    'RUF', # ruff
+    'SLF', # self
+    'SLOT', # flake8 slots
+    'SIM', # flake8 simplify
+    'ASYNC', # flake8-async
+]
+
+ignore = [
+    'B008', # Allow best practise setup for API
+    'D100',    # Missing docstring in public module
+    'D101',    # Missing docstring in public class
+    'D104',    # Missing docstring in public package
+    'D105',    # Missing docstring in magic method
+    'D106',    # Missing docstring in public nested class
+    'D107',    # Missing docstring in __init__ (conflicts with DOC301)
+    'D200',    # One-line docstring should fit on one line with quotes
+    'D101',    # Missing docstring in public class
+    'D102',    # Missing docstring in public method
+    'D103',    # Missing docstring in public function
+    'D205',    # 1 blank line required between summary line and description
+    'D212',    # Multi-line docstring summary should start at the first line
+    'D400',    # First line should end with a period
+    'D401',    # First line should be in imperative mood
+    'D403',    # First word of the first line should be properly capitalized
+    'D413',    # Missing blank line after last section
+    'D415',    # First line should end with a period, question mark, or exclamation point
+    'E712',    # Comparison to true should be 'if cond is true:' or 'if cond:'
+    'E731',    # Do not assign a lambda expression, use a def
+    'F704',    # Multiple statements on one line (def)
+    'PLW0120', # `else` clause on loop without a `break` statement
+    'RET504',  # Unnecessary variable assignment before return statement
+    'RET505',  # Unnecessary else after return statement
+    'RET506',  # Unnecessary else after raise statement
+    'SIM102',  # Use a single if-statement instead of nested if-statements
+    'SIM105',  # Use 'contextlib.suppress(...)' instead of try-except-pass
+    'SIM114',  # Checks for if branches with identical arm bodies
+    'SIM115',  # Use context handler for opening files
+    'SIM117',  # Combining 'with' statements
+    'SIM118',  # Checks for key-existence checks against dict.keys() calls
+    'W605',    # Invalid escape sequence 'x'
+    'PERF401', # Allow non-list comprehensions
+    'B023', # Not sure what this allows but it's annoying
+    'Q001', # Bad quotes linting is not compatible with `ruff format`
+    'C408', # Unnecessary dict call. dict(a=1) is more readable than {'a': 1}
+    'RUF100', # Allow use of expired noqa directives
+]
+
+[tool.ruff.lint.per-file-ignores]
+'tests/**/*' = ['INP001', 'PLR2004', 'S101', 'TID252']
+'__init__.py' = ['F401']
+[tool.ruff.lint.pydocstyle]
+convention = 'google'
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = 'single'
+multiline-quotes = 'single'
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 129
+
+
+# Pyright configuration
+[tool.pyright]
+include = ['gwaihir']
+exclude = ['**/.*', '**/node_modules', '**/__pycache__', '.venv']
+venv = '.venv'
+venvPath = '.'
+
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportGeneralTypeIssues = true
+reportOptionalSubscript = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportTypedDictNotRequiredAccess = false
