@@ -1,4 +1,3 @@
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -23,12 +22,6 @@ def client(db: RedbookDatabase) -> TolkienGatewayClient:
     )
 
 
-def _document_count(db: RedbookDatabase) -> int:
-    with sqlite3.connect(db.db_path) as connection:
-        result = connection.execute('SELECT COUNT(*) FROM documents').fetchone()
-        return int(result[0]) if result is not None else 0
-
-
 class TestTolkienGatewayClient:
     def test_get_index_with_small_limit(self, client: TolkienGatewayClient) -> None:
         pages = client.get_index(limit=2)
@@ -49,11 +42,39 @@ class TestTolkienGatewayClient:
         second = Page(title='Two', pageid=2, url='http://example/two', content='beta')
 
         client.store_page(first)
-        assert _document_count(db) == 0
+        assert db.document_count() == 0
 
         client.store_page(second)
-        assert _document_count(db) == 2
+        assert db.document_count() == 2
 
     def test_crawl_limited(self, client: TolkienGatewayClient, db: RedbookDatabase) -> None:
         client.crawl(limit=3, pause_seconds=0.5)
-        assert _document_count(db) == 3
+        assert db.document_count() == 3
+
+    def test_crawl_retries_after_error(
+        self, client: TolkienGatewayClient, db: RedbookDatabase, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_get_index(limit: int | None = None) -> list[dict[str, int | str]]:
+            _ = limit
+            return [{'title': 'RetryPage', 'pageid': 1, 'url': 'u'}]
+
+        monkeypatch.setattr(client, 'get_index', fake_get_index)
+
+        calls = {'count': 0}
+
+        def fake_get_page(title: str) -> Page:
+            calls['count'] += 1
+            if calls['count'] == 1:
+                raise RuntimeError('temporary failure')
+            return Page(title=title, pageid=1, url='http://example/retry', content='ok')
+
+        sleeps: list[float] = []
+
+        monkeypatch.setattr(client, 'get_page', fake_get_page)
+        monkeypatch.setattr('gwaihir.retriever.client.time.sleep', lambda seconds: sleeps.append(seconds))
+
+        client.crawl(limit=1, pause_seconds=0.0, nr_attemps=2, retry_sleep_seconds=120.0)
+
+        assert calls['count'] == 2
+        assert 120.0 in sleeps
+        assert db.document_count() == 1

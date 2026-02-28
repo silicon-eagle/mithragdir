@@ -55,6 +55,14 @@ class RedbookDatabase:
                 return -1
             return cursor.lastrowid
 
+    def document_count(self) -> int:
+        query = 'SELECT COUNT(*) FROM documents;'
+        with self.connect() as conn:
+            row = conn.execute(query).fetchone()
+            if row is None:
+                return 0
+            return int(row[0])
+
     def _create_documents_table(self) -> None:
         create_table_query = """
         CREATE TABLE IF NOT EXISTS documents (

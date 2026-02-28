@@ -11,10 +11,6 @@ from loguru import logger
 from gwaihir.db.db import RedbookDatabase
 
 
-class RateLimitError(RuntimeError):
-    """Raised when the remote API indicates a rate-limit condition."""
-
-
 @dataclass
 class Page:
     """A page fetched from the Tolkien Gateway."""
@@ -60,15 +56,10 @@ class TolkienGatewayClient:
             impersonate='chrome',
             timeout=self.timeout_seconds,
         )
-        if response.status_code == 429:
-            raise RateLimitError('HTTP 429 rate-limit encountered')
         response.raise_for_status()
         payload = response.json()
         if 'error' in payload:
             error = payload['error']
-            error_code = str(error.get('code', '')).lower()
-            if error_code in {'ratelimited', 'rate-limited', 'maxlag'}:
-                raise RateLimitError(f'MediaWiki rate-limit encountered: {error}')
             raise RuntimeError(f'MediaWiki API error: {error}')
         return payload
 
@@ -169,36 +160,41 @@ class TolkienGatewayClient:
         self,
         limit: int | None = None,
         pause_seconds: float = 2.0,
+        nr_attemps: int = 2,
+        retry_sleep_seconds: float = 120.0,
     ) -> int:
-        logger.info(f'Starting crawl(limit={limit}, pause_seconds={pause_seconds})')
+        if nr_attemps < 0:
+            raise ValueError('nr_attemps must be >= 0')
+
+        logger.info(f'Starting crawl(limit={limit}, pause_seconds={pause_seconds}, nr_attemps={nr_attemps})')
 
         index = self.get_index(limit=limit)
         logger.info(f'Crawl index contains {len(index)} pages')
-        rate_limit_sleep_seconds = 120
 
         for item in index:
             title = str(item['title'])
-            for attempt in range(2):
+            max_attempts = nr_attemps + 1
+            stored = False
+            for attempt_number in range(1, max_attempts + 1):
                 try:
                     page = self.get_page(title)
                     self.store_page(page)
-                    if attempt == 0:
-                        logger.debug(f'Stored crawled page {title}')
-                    else:
-                        logger.debug(f'Stored crawled page {title} after rate-limit pause')
+                    logger.debug(f'Stored crawled page {title} after attempt {attempt_number}')
+                    stored = True
                     break
-                except RateLimitError as exc:
-                    if attempt == 0:
-                        logger.warning(
-                            f'Rate-limit encountered while crawling {title}: {exc}. '
-                            f'Pausing all crawling for {rate_limit_sleep_seconds} seconds before retrying.'
-                        )
-                        time.sleep(rate_limit_sleep_seconds)
-                        continue
-                    logger.warning(f'Failed to fetch page {title} after rate-limit pause: {exc}')
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning(f'Failed to fetch page {title}: {exc}')
-                    break
+                    if attempt_number >= max_attempts:
+                        logger.warning(f'Failed to fetch page {title} after {max_attempts} attempts: {exc}')
+                        break
+
+                    logger.warning(
+                        f'Error while crawling {title} (attempt {attempt_number}/{max_attempts}): {exc}. '
+                        f'Pausing for {retry_sleep_seconds} seconds before retrying.'
+                    )
+                    time.sleep(retry_sleep_seconds)
+
+            if not stored:
+                logger.debug(f'Skipping page {title} after retry exhaustion')
 
             time.sleep(pause_seconds)
 
