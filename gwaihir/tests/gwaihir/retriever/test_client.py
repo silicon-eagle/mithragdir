@@ -54,7 +54,6 @@ class TestTolkienGatewayClient:
         client.store_page(second)
         assert _document_count(db) == 2
 
-    @pytest.mark.asyncio
-    async def test_crawl_limited(self, client: TolkienGatewayClient, db: RedbookDatabase) -> None:
-        await client.crawl(limit=10, max_workers=2, pause_seconds=2)
-        assert _document_count(db) == 10
+    def test_crawl_limited(self, client: TolkienGatewayClient, db: RedbookDatabase) -> None:
+        client.crawl(limit=3, pause_seconds=0.5)
+        assert _document_count(db) == 3

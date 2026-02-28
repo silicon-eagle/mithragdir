@@ -41,32 +41,25 @@ client.close()
 Use a small limit while developing to avoid excessive requests.
 
 ```python
-import asyncio
 from pathlib import Path
 
 from gwaihir.db.db import RedbookDatabase
 from gwaihir.retriever.client import TolkienGatewayClient
 
+db = RedbookDatabase(Path('storage/redbook.db'))
+db._create_documents_table()
 
-async def main() -> None:
-	db = RedbookDatabase(Path('storage/redbook.db'))
-	db._create_documents_table()
+client = TolkienGatewayClient(
+	base_url='https://tolkiengateway.net',
+	db=db,
+	batch_size=20,
+)
 
-	client = TolkienGatewayClient(
-		base_url='https://tolkiengateway.net',
-		db=db,
-		batch_size=20,
-	)
-
-	stored_count = await client.crawl(
-		limit=25,
-		max_workers=3,
-		pause_seconds=2.0,
-	)
-	print(f'Stored {stored_count} pages')
-
-
-asyncio.run(main())
+stored_count = client.crawl(
+	limit=25,
+	pause_seconds=2.0,
+)
+print(f'Stored {stored_count} pages')
 ```
 
 ### Notes
