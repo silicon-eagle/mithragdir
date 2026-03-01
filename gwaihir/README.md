@@ -17,7 +17,8 @@ from gwaihir.db.db import RedbookDatabase
 from gwaihir.retriever.client import TolkienGatewayClient
 
 db = RedbookDatabase(Path('storage/redbook.db'))
-db._create_documents_table()
+db._create_index_table()
+db._create_page_table()
 
 client = TolkienGatewayClient(
 	base_url='https://tolkiengateway.net',
@@ -47,7 +48,8 @@ from gwaihir.db.db import RedbookDatabase
 from gwaihir.retriever.client import TolkienGatewayClient
 
 db = RedbookDatabase(Path('storage/redbook.db'))
-db._create_documents_table()
+db._create_index_table()
+db._create_page_table()
 
 client = TolkienGatewayClient(
 	base_url='https://tolkiengateway.net',

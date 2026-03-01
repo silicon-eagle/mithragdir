@@ -8,6 +8,7 @@ dependencies = [
     "curl-cffi>=0.13.0",
     "httpx>=0.28.0",
     "loguru>=0.7.3",
+    "numpy>=2.4.2",
 ]
 
 [dependency-groups]
@@ -64,7 +65,7 @@ skip_covered = true
 
 # Ruff configuration
 [tool.ruff]
-line-length = 119
+line-length = 149
 target-version = 'py311'
 src = ['gwaihir', 'tests']
 
@@ -154,6 +155,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 'tests/**/*' = ['INP001', 'PLR2004', 'SLF001', 'S101', 'TID252']
+'scripts/**/*'= ['INP001', 'PLR2004', 'SLF001', 'S101', 'TID252']
 '__init__.py' = ['F401']
 [tool.ruff.lint.pydocstyle]
 convention = 'google'

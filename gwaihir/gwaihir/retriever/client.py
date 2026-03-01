@@ -2,23 +2,13 @@ from __future__ import annotations
 
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
 from urllib.parse import quote
 
 from curl_cffi import requests as curl_requests
 from loguru import logger
 
 from gwaihir.db.db import RedbookDatabase
-
-
-@dataclass
-class Page:
-    """A page fetched from the Tolkien Gateway."""
-
-    title: str
-    pageid: int
-    url: str
-    content: str
+from gwaihir.db.models import Index, Page
 
 
 class TolkienGatewayClient:
@@ -44,8 +34,7 @@ class TolkienGatewayClient:
         self.timeout_seconds = timeout_seconds
         self._pending_pages: list[Page] = []
         logger.info(
-            f'Initialized TolkienGatewayClient(base_url={self.base_url}, '
-            f'batch_size={self.batch_size}, timeout_seconds={self.timeout_seconds})'
+            f'Initialized TolkienGatewayClient(base_url={self.base_url}, batch_size={self.batch_size}, timeout_seconds={self.timeout_seconds})'
         )
 
     def _request_json(self, params: dict[str, str]) -> dict:
@@ -66,41 +55,104 @@ class TolkienGatewayClient:
     def _build_page_url(self, title: str) -> str:
         return f'{self.base_url}/wiki/{quote(title.replace(" ", "_"))}'
 
-    def get_index(self, limit: int | None = None) -> list[dict[str, int | str]]:
-        logger.info(f'Fetching page index with limit={limit}')
-        pages: list[dict[str, int | str]] = []
+    def _fetch_index_payload_with_retry(
+        self,
+        params: dict[str, str],
+        nr_attempts: int,
+        retry_sleep_seconds: float,
+    ) -> dict:
+        max_attempts = nr_attempts + 1
+        payload: dict | None = None
+        for attempt_number in range(1, max_attempts + 1):
+            try:
+                payload = self._request_json(params)
+                break
+            except Exception as exc:  # noqa: BLE001
+                if attempt_number >= max_attempts:
+                    logger.warning(f'Failed to fetch index batch after {max_attempts} attempts: {exc}')
+                    raise
+
+                logger.warning(
+                    f'Error while fetching index batch (attempt {attempt_number}/{max_attempts}): {exc}. '
+                    f'Pausing for {retry_sleep_seconds} seconds before retrying.'
+                )
+                time.sleep(retry_sleep_seconds)
+
+        if payload is None:
+            raise RuntimeError('Index payload is unexpectedly None after retries')
+        return payload
+
+    def _build_index_batch(self, allpages: list[dict[str, object]], remaining: int | None = None) -> list[Index]:
+        batch_indexes: list[Index] = []
+        for item in allpages:
+            if remaining is not None and len(batch_indexes) >= remaining:
+                break
+
+            title = str(item.get('title', ''))
+            pageid_raw = item.get('pageid', -1)
+            pageid = int(pageid_raw) if isinstance(pageid_raw, int | str) and str(pageid_raw).isdigit() else -1
+            url = self._build_page_url(title)
+            batch_indexes.append(Index(title=title, pageid=pageid, url=url))
+
+        return batch_indexes
+
+    def _store_index_batch(self, indexes: Sequence[Index]) -> None:
+        if not indexes:
+            return
+        self.db.insert_indexes(indexes)
+
+    def _extract_apcontinue(self, payload: dict) -> str | None:
+        continue_payload = payload.get('continue')
+        if isinstance(continue_payload, dict):
+            apcontinue = continue_payload.get('apcontinue')
+            return apcontinue if isinstance(apcontinue, str) else None
+        return None
+
+    def get_index(
+        self,
+        limit: int | None = None,
+        batch_size: int = 100,
+        pause_seconds: float = 1.0,
+        nr_attempts: int = 2,
+        retry_sleep_seconds: float = 5.0,
+    ) -> list[Index]:
+        logger.info(f'Fetching page index with limit={limit}, batch_size={batch_size}, pause_seconds={pause_seconds}, nr_attempts={nr_attempts}')
+        pages: list[Index] = []
         next_continue: str | None = None
 
+        loop_counter = 0
         while True:
+            loop_counter += 1
+            time.sleep(pause_seconds)
             remaining = None if limit is None else limit - len(pages)
             if remaining is not None and remaining <= 0:
                 break
+            batch_size = min(batch_size, remaining, 500) if remaining is not None else min(batch_size, 500)
 
+            logger.info(f'loop {loop_counter}: Fetching index batch with batch_size={batch_size}.')
             params: dict[str, str] = {
                 'action': 'query',
                 'format': 'json',
                 'list': 'allpages',
-                'aplimit': str(min(500, remaining) if remaining is not None else 500),
+                'aplimit': str(batch_size),
+                **({'apcontinue': next_continue} if next_continue else {}),
             }
-            if next_continue is not None:
-                params['apcontinue'] = next_continue
 
-            payload = self._request_json(params)
+            payload = self._fetch_index_payload_with_retry(
+                params=params,
+                nr_attempts=nr_attempts,
+                retry_sleep_seconds=retry_sleep_seconds,
+            )
+
             allpages = payload.get('query', {}).get('allpages', [])
-            logger.debug(f'Fetched {len(allpages)} index entries in current page')
-            for item in allpages:
-                title = item['title']
-                pages.append(
-                    {
-                        'title': title,
-                        'pageid': int(item['pageid']),
-                        'url': self._build_page_url(title),
-                    }
-                )
-                if limit is not None and len(pages) >= limit:
-                    break
+            total = len(allpages) + len(pages)
+            logger.info(f'Fetched {len(allpages)} (total={total}) index entries in current page')
 
-            next_continue = payload.get('continue', {}).get('apcontinue')
+            batch_indexes = self._build_index_batch(allpages=allpages, remaining=remaining)
+            pages.extend(batch_indexes)
+            self._store_index_batch(batch_indexes)
+
+            next_continue = self._extract_apcontinue(payload)
             if not next_continue:
                 break
 
@@ -114,7 +166,7 @@ class TolkienGatewayClient:
                 'action': 'parse',
                 'format': 'json',
                 'page': title,
-                'prop': 'text',
+                'prop': 'text|categories|links|images|externallinks|sections|revid|displaytitle|properties',
                 'disablelimitreport': '1',
                 'disableeditsection': '1',
                 'disablestylededuplication': '1',
@@ -127,12 +179,30 @@ class TolkienGatewayClient:
         pageid = int(parsed.get('pageid', -1))
         parsed_title = str(parsed.get('title', title))
         content = parsed.get('text', {}).get('*', '')
+
+        categories = parsed.get('categories')
+        images = parsed.get('images')
+        links = parsed.get('links')
+        external_links = parsed.get('externallinks')
+        sections = parsed.get('sections')
+        revid = parsed.get('revid')
+        displaytitle = parsed.get('displaytitle')
+        properties = parsed.get('properties')
+
         logger.debug(f'Fetched page title={parsed_title} pageid={pageid} content_len={len(content)}')
         return Page(
             title=parsed_title,
             pageid=pageid,
             url=self._build_page_url(parsed_title),
             content=content,
+            categories=categories,
+            images=images,
+            links=links,
+            external_links=external_links,
+            sections=sections,
+            revid=revid,
+            displaytitle=displaytitle,
+            properties=properties,
         )
 
     def store_page(self, page: Page) -> None:
@@ -149,7 +219,7 @@ class TolkienGatewayClient:
 
         stored = 0
         for page in self._pending_pages:
-            self.db.insert_document(page.title, page.url, page.content)
+            self.db.insert_page(page)
             stored += 1
 
         logger.info(f'Flushed {stored} pages to database')
@@ -158,48 +228,81 @@ class TolkienGatewayClient:
 
     def crawl(
         self,
+        index: Index | list[Index] | None = None,
         limit: int | None = None,
         pause_seconds: float = 2.0,
-        nr_attemps: int = 2,
+        nr_attempts: int = 2,
         retry_sleep_seconds: float = 120.0,
     ) -> int:
-        if nr_attemps < 0:
+        if nr_attempts < 0:
             raise ValueError('nr_attemps must be >= 0')
 
-        logger.info(f'Starting crawl(limit={limit}, pause_seconds={pause_seconds}, nr_attemps={nr_attemps})')
+        logger.info(f'Starting crawl(limit={limit}, pause_seconds={pause_seconds}, nr_attemps={nr_attempts})')
 
-        index = self.get_index(limit=limit)
-        logger.info(f'Crawl index contains {len(index)} pages')
+        # Resolve crawl input: use provided index or fetch one.
+        if index is None:
+            crawl_index = self.get_index(limit=limit)
+        elif isinstance(index, Index):
+            crawl_index = [index]
+        else:
+            crawl_index = index
 
-        for item in index:
-            title = str(item['title'])
-            max_attempts = nr_attemps + 1
-            stored = False
-            for attempt_number in range(1, max_attempts + 1):
-                try:
-                    page = self.get_page(title)
-                    self.store_page(page)
-                    logger.debug(f'Stored crawled page {title} after attempt {attempt_number}')
-                    stored = True
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    if attempt_number >= max_attempts:
-                        logger.warning(f'Failed to fetch page {title} after {max_attempts} attempts: {exc}')
-                        break
+        total_pages = len(crawl_index)
+        logger.info(f'Crawl index contains {total_pages} pages')
 
-                    logger.warning(
-                        f'Error while crawling {title} (attempt {attempt_number}/{max_attempts}): {exc}. '
-                        f'Pausing for {retry_sleep_seconds} seconds before retrying.'
+        processed_count = 0
+        stored_count = 0
+        failed_count = 0
+        try:
+            for item in crawl_index:
+                title = item.title
+
+                # Skip network work if this page is already stored.
+                if self.db.page_exists(title):
+                    processed_count += 1
+                    logger.info(
+                        f'Crawl progress: {processed_count}/{total_pages} (stored={stored_count}, failed={failed_count}) - skipped existing {title}'
                     )
-                    time.sleep(retry_sleep_seconds)
+                    time.sleep(pause_seconds)
+                    continue
 
-            if not stored:
-                logger.debug(f'Skipping page {title} after retry exhaustion')
+                max_attempts = nr_attempts + 1
+                stored = False
+                # Retry failed page retrieval a limited number of times.
+                for attempt_number in range(1, max_attempts + 1):
+                    try:
+                        page = self.get_page(title)
+                        self.store_page(page)
+                        logger.debug(f'Stored crawled page {title} after attempt {attempt_number}')
+                        stored = True
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        if attempt_number >= max_attempts:
+                            logger.warning(f'Failed to fetch page {title} after {max_attempts} attempts: {exc}')
+                            break
 
-            time.sleep(pause_seconds)
+                        logger.warning(
+                            f'Error while crawling {title} (attempt {attempt_number}/{max_attempts}): {exc}. '
+                            f'Pausing for {retry_sleep_seconds} seconds before retrying.'
+                        )
+                        time.sleep(retry_sleep_seconds)
 
-        flushed = self.flush()
-        logger.info(f'Crawl completed; flushed {flushed} remaining pages')
+                if not stored:
+                    logger.debug(f'Skipping page {title} after retry exhaustion')
+                    failed_count += 1
+                else:
+                    stored_count += 1
+
+                processed_count += 1
+                logger.info(f'Crawl progress: {processed_count}/{total_pages} (stored={stored_count}, failed={failed_count})')
+
+                # Polite pause between pages.
+                time.sleep(pause_seconds)
+        finally:
+            # Always flush buffered pages, even on interruption/error.
+            flushed = self.flush()
+
+        logger.info(f'Crawl completed: processed={processed_count}, stored={stored_count}, failed={failed_count}, flushed_remaining={flushed}')
         return flushed
 
     def store_pages(self, pages: Sequence[Page]) -> int:
