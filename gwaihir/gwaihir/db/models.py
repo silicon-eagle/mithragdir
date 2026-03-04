@@ -27,6 +27,20 @@ class Page:
     displaytitle: str | None = None
     properties: list[dict[str, object]] | None = None
 
+
+@dataclass
+class Book:
+    title: str
+    content: str
+    author: str | None = None
+    url: str | None = None
+    source_path: str | None = None
+    publisher: str | None = None
+    published_year: int | None = None
+    isbn: str | None = None
+    language: str | None = None
+    file_format: str | None = None
+
     def dump_to_json(self, base_path: str | Path | None = None, filename: str | None = None) -> Path:
         if filename is None:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

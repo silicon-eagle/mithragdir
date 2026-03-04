@@ -1,0 +1,102 @@
+from pathlib import Path
+
+import pytest
+from gwaihir.db.db import RedbookDatabase
+from gwaihir.retriever.book_client import BookClient
+
+
+@pytest.fixture
+def db(tmp_path: Path) -> RedbookDatabase:
+    database = RedbookDatabase(db_path=tmp_path / 'test_book_client.db')
+    database._create_document_table()
+    database._create_book_table()
+    return database
+
+
+@pytest.fixture
+def source_folder(tmp_path: Path) -> Path:
+    folder = tmp_path / 'database' / 'books'
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+@pytest.fixture
+def client(db: RedbookDatabase, source_folder: Path) -> BookClient:
+    return BookClient(source_folder=source_folder, db=db, batch_size=2)
+
+
+class TestBookClient:
+    def test_constructor_uses_explicit_source_folder(self, db: RedbookDatabase, source_folder: Path) -> None:
+        client = BookClient(db=db, source_folder=source_folder)
+        assert client.source_folder == source_folder
+        assert client.index_path == source_folder / 'index.csv'
+
+    def test_ingest_local_books_stores_documents_and_books(
+        self,
+        client: BookClient,
+        source_folder: Path,
+        db: RedbookDatabase,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        pdf_path = source_folder / 'book_one.pdf'
+        epub_path = source_folder / 'book_two.epub'
+        missing_path = source_folder / 'missing.pdf'
+
+        pdf_path.write_bytes(b'%PDF-1.4')
+        epub_path.write_bytes(b'PK\x03\x04')
+        (source_folder / 'index.csv').write_text(
+            '\n'.join(
+                [
+                    'file;author;title;publisher;published_year;isbn;language',
+                    f'{pdf_path.name};Author One;Book One;Pub A;2001;111;en',
+                    f'{epub_path.name};Author Two;Book Two;Pub B;2002;222;en',
+                    f'{missing_path.name};Author Three;Missing Book;Pub C;2003;333;en',
+                ]
+            ),
+            encoding='utf-8',
+        )
+
+        monkeypatch.setattr(client, '_extract_text', lambda file_path: f'content from {file_path.name}')
+
+        flushed = client.ingest(pause_seconds=0.0)
+
+        assert flushed == 0
+        assert db.document_count() == 2
+
+        with db.connect() as conn:
+            book_count_row = conn.execute('SELECT COUNT(*) FROM book;').fetchone()
+
+        assert book_count_row is not None
+        assert int(book_count_row[0]) == 2
+
+        with db.connect() as conn:
+            row = conn.execute('SELECT author, publisher, published_year, isbn, language FROM book ORDER BY id LIMIT 1').fetchone()
+
+        assert row is not None
+        assert row[0] == 'Author One'
+        assert row[1] == 'Pub A'
+        assert int(row[2]) == 2001
+        assert row[3] == '111'
+        assert row[4] == 'en'
+
+    def test_ingest_skips_already_ingested_books(
+        self,
+        client: BookClient,
+        source_folder: Path,
+        db: RedbookDatabase,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        pdf_path = source_folder / 'book_one.pdf'
+        pdf_path.write_bytes(b'%PDF-1.4')
+        (source_folder / 'index.csv').write_text('file;author;title\nbook_one.pdf;Author;Book One\n', encoding='utf-8')
+
+        monkeypatch.setattr(client, '_extract_text', lambda _file_path: 'same content')
+
+        client.ingest(pause_seconds=0.0)
+        first_count = db.document_count()
+
+        client.ingest(pause_seconds=0.0)
+        second_count = db.document_count()
+
+        assert first_count == 1
+        assert second_count == 1

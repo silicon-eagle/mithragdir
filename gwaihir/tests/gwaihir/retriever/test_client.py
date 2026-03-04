@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from gwaihir.db.db import RedbookDatabase
 from gwaihir.db.models import Index, Page
-from gwaihir.retriever.client import TolkienGatewayClient
+from gwaihir.retriever.tolkien_gateway_client import TolkienGatewayClient
 from numpy import ceil
 
 
@@ -11,7 +11,8 @@ from numpy import ceil
 def db(tmp_path: Path) -> RedbookDatabase:
     database = RedbookDatabase(db_path=tmp_path / 'test_client.db')
     database._create_index_table()
-    database._create_page_table()
+    database._create_document_table()
+    database._create_wiki_page_table()
     return database
 
 
@@ -49,16 +50,16 @@ class TestTolkienGatewayClient:
 
         for page in pages[:-1]:
             client.store_page(page)
-        assert db.page_count() == 0
+        assert db.document_count() == 0
 
         client.store_page(pages[-1])
-        assert db.page_count() == 25
+        assert db.document_count() == 25
 
     def test_crawl_limited(self, client: TolkienGatewayClient, db: RedbookDatabase) -> None:
         nr_pages = 10
         index = client.get_index(limit=nr_pages, batch_size=int(ceil(nr_pages / 2)), pause_seconds=0.5)
         client.crawl(index=index, pause_seconds=0.5)
-        assert db.page_count() == nr_pages
+        assert db.document_count() == nr_pages
 
     def test_crawl_retries_after_error(self, client: TolkienGatewayClient, db: RedbookDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
         test_index = Index(title='RetryPage', pageid=1, url='u')
@@ -75,19 +76,19 @@ class TestTolkienGatewayClient:
         sleeps: list[float] = []
 
         monkeypatch.setattr(client, 'get_page', fake_get_page)
-        monkeypatch.setattr('gwaihir.retriever.client.time.sleep', sleeps.append)
+        monkeypatch.setattr('gwaihir.retriever.tolkien_gateway_client.time.sleep', sleeps.append)
 
         client.crawl(index=test_index, pause_seconds=0.0, nr_attempts=2, retry_sleep_seconds=120.0)
 
         assert calls['count'] == 2
         assert 120.0 in sleeps
-        assert db.page_count() == 1
+        assert db.document_count() == 1
 
     def test_crawl_skips_existing_page(self, client: TolkienGatewayClient, db: RedbookDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
         existing_index = Index(title='Existing', pageid=10, url='http://example/existing')
         existing_page = Page(title='Existing', pageid=10, url='http://example/existing', content='already there')
         db.insert_index(existing_index)
-        db.insert_page(existing_page)
+        db.insert_document(existing_page)
 
         def fail_if_called(_title: str) -> Page:
             raise AssertionError('get_page should not be called for existing page')
@@ -96,4 +97,4 @@ class TestTolkienGatewayClient:
 
         client.crawl(index=existing_index, pause_seconds=0.0, nr_attempts=0)
 
-        assert db.page_count() == 1
+        assert db.document_count() == 1

@@ -1,0 +1,186 @@
+from __future__ import annotations
+
+import csv
+import time
+from pathlib import Path
+
+from bs4 import BeautifulSoup
+from ebooklib import ITEM_DOCUMENT, epub
+from loguru import logger
+from pypdf import PdfReader
+
+from gwaihir.db.db import RedbookDatabase
+from gwaihir.db.models import Book
+
+
+class BookClient:
+    def __init__(
+        self,
+        db: RedbookDatabase,
+        source_folder: str | Path,
+        index_filename: str = 'index.csv',
+        batch_size: int = 10,
+    ) -> None:
+        self.source_folder = Path(source_folder)
+        self.index_path = self.source_folder / index_filename
+        self.db = db
+        self.batch_size = batch_size
+        self._pending_books: list[Book] = []
+        logger.info(f'Initialized BookClient(source_folder={self.source_folder}, index_path={self.index_path}, batch_size={self.batch_size})')
+
+    def _iter_index_rows(self) -> list[dict[str, str]]:
+        if not self.index_path.exists():
+            logger.warning(f'Book index file does not exist: {self.index_path}')
+            return []
+
+        with self.index_path.open(encoding='utf-8', newline='') as file:
+            reader = csv.DictReader(file, delimiter=';')
+            if reader.fieldnames is None or 'file' not in reader.fieldnames:
+                raise ValueError('Book index must contain a `file` column (delimiter=`;`).')
+
+            rows: list[dict[str, str]] = []
+            for row in reader:
+                normalized = {key: (value.strip() if value is not None else '') for key, value in row.items() if key is not None}
+                if normalized.get('file'):
+                    rows.append(normalized)
+            return rows
+
+    def _resolve_index_entries(self) -> list[tuple[Path, dict[str, str]]]:
+        rows = self._iter_index_rows()
+        entries: list[tuple[Path, dict[str, str]]] = []
+        missing_files = 0
+
+        for row in rows:
+            relative_file = row['file']
+            file_path = (self.source_folder / relative_file).resolve()
+            if not file_path.exists() or not file_path.is_file():
+                missing_files += 1
+                logger.warning(f'Indexed file is missing and will be skipped: {file_path}')
+                continue
+
+            if file_path.suffix.lower() not in {'.pdf', '.epub'}:
+                logger.warning(f'Indexed file has unsupported format and will be skipped: {file_path}')
+                continue
+
+            entries.append((file_path, row))
+
+        if missing_files:
+            logger.info(f'Index validation: {missing_files} indexed file(s) missing.')
+
+        return entries
+
+    def _extract_pdf_text(self, file_path: Path) -> str:
+        reader = PdfReader(str(file_path))
+        chunks: list[str] = []
+        for page in reader.pages:
+            extracted = page.extract_text() or ''
+            if extracted:
+                chunks.append(extracted)
+        return '\n\n'.join(chunks)
+
+    def _extract_epub_text(self, file_path: Path) -> str:
+        book = epub.read_epub(str(file_path))
+        chunks: list[str] = []
+        for item in book.get_items_of_type(ITEM_DOCUMENT):
+            soup = BeautifulSoup(item.get_body_content(), 'html.parser')
+            text = soup.get_text(separator=' ', strip=True)
+            if text:
+                chunks.append(text)
+        return '\n\n'.join(chunks)
+
+    def _extract_text(self, file_path: Path) -> str:
+        suffix = file_path.suffix.lower()
+        if suffix == '.pdf':
+            return self._extract_pdf_text(file_path)
+        if suffix == '.epub':
+            return self._extract_epub_text(file_path)
+        raise ValueError(f'Unsupported book format: {file_path.suffix}')
+
+    def _build_book(self, file_path: Path, metadata: dict[str, str]) -> Book:
+        logger.debug(f'Extracting text from book file: {file_path}')
+        content = self._extract_text(file_path)
+        title = metadata.get('title') or file_path.stem.replace('_', ' ').strip()
+        source_path = str(file_path.resolve())
+
+        published_year = None
+        published_year_value = metadata.get('published_year', '')
+        if published_year_value.isdigit():
+            published_year = int(published_year_value)
+
+        return Book(
+            title=title,
+            content=content,
+            author=metadata.get('author') or 'Unknown',
+            url=source_path,
+            source_path=source_path,
+            publisher=metadata.get('publisher') or None,
+            published_year=published_year,
+            isbn=metadata.get('isbn') or None,
+            language=metadata.get('language') or None,
+            file_format=file_path.suffix.lower().lstrip('.'),
+        )
+
+    def store_book(self, book: Book) -> None:
+        self._pending_books.append(book)
+        logger.debug(f'Buffered book {book.title} (pending={len(self._pending_books)}/{self.batch_size})')
+        if len(self._pending_books) >= self.batch_size:
+            logger.info('Book batch size reached; flushing pending books')
+            self.flush()
+
+    def flush(self) -> int:
+        if not self._pending_books:
+            logger.debug('Flush called with empty book buffer')
+            return 0
+
+        stored = 0
+        for book in self._pending_books:
+            self.db.insert_book(book)
+            stored += 1
+
+        logger.info(f'Flushed {stored} books to database')
+        self._pending_books.clear()
+        return stored
+
+    def ingest(self, limit: int | None = None, pause_seconds: float = 0.0) -> int:
+        entries = self._resolve_index_entries()
+        if limit is not None:
+            entries = entries[:limit]
+
+        total = len(entries)
+        logger.info(f'Starting local book ingestion from index for {total} files (limit={limit})')
+
+        processed = 0
+        stored = 0
+        skipped = 0
+        failed = 0
+        try:
+            for file_path, metadata in entries:
+                source_path = str(file_path.resolve())
+                if self.db.book_exists(source_path):
+                    skipped += 1
+                    processed += 1
+                    logger.info(f'Book progress: {processed}/{total} (stored={stored}, skipped={skipped}, failed={failed})')
+                    continue
+
+                try:
+                    book = self._build_book(file_path, metadata)
+                    self.store_book(book)
+                    stored += 1
+                except Exception as exc:  # noqa: BLE001
+                    failed += 1
+                    logger.warning(f'Failed to ingest book file {file_path}: {exc}')
+
+                processed += 1
+                logger.info(f'Book progress: {processed}/{total} (stored={stored}, skipped={skipped}, failed={failed})')
+                time.sleep(pause_seconds)
+        finally:
+            flushed = self.flush()
+
+        logger.info(
+            f'Book ingestion completed: processed={processed}, stored={stored}, skipped={skipped}, failed={failed}, flushed_remaining={flushed}'
+        )
+        return flushed
+
+    def close(self) -> None:
+        logger.info('Closing BookClient and flushing pending books')
+        self.flush()

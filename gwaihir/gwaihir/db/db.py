@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from gwaihir.db.models import Index, Page
+from gwaihir.db.models import Book, Index, Page
 
 
 class RedbookDatabase:
@@ -36,11 +36,16 @@ class RedbookDatabase:
             conn.execute(query, params)
 
     def insert_index(self, index: Index) -> int:
+        exists_query = 'SELECT 1 FROM "index" WHERE page_id = ? OR url = ? LIMIT 1;'
         insert_query = """
         INSERT OR IGNORE INTO "index" (page_id, title, url)
         VALUES (?, ?, ?);
         """
         with self.connect() as conn:
+            existing = conn.execute(exists_query, (index.pageid, index.url)).fetchone()
+            if existing is not None:
+                return index.pageid
+
             cursor = conn.execute(insert_query, (index.pageid, index.title, index.url))
             if cursor.lastrowid is None:
                 return index.pageid
@@ -54,19 +59,45 @@ class RedbookDatabase:
         INSERT OR IGNORE INTO "index" (page_id, title, url)
         VALUES (?, ?, ?);
         """
-        rows = [(index.pageid, index.title, index.url) for index in indexes]
+
+        rows: list[tuple[int, str, str]] = []
         with self.connect() as conn:
+            existing_rows = conn.execute('SELECT page_id, url FROM "index"').fetchall()
+            existing_page_ids = {int(row[0]) for row in existing_rows}
+            existing_urls = {str(row[1]) for row in existing_rows if row[1] is not None}
+
+            seen_page_ids: set[int] = set()
+            seen_urls: set[str] = set()
+            for index in indexes:
+                if index.pageid in existing_page_ids or index.url in existing_urls:
+                    continue
+                if index.pageid in seen_page_ids or index.url in seen_urls:
+                    continue
+
+                rows.append((index.pageid, index.title, index.url))
+                seen_page_ids.add(index.pageid)
+                seen_urls.add(index.url)
+
+            if not rows:
+                return 0
+
             conn.executemany(insert_query, rows)
 
-        return len(indexes)
+        return len(rows)
 
-    def insert_page(self, page: Page) -> int:
-        insert_query = """
-        INSERT INTO page (
-            page_id,
+    def insert_document(self, page: Page) -> int:
+        insert_document_query = """
+        INSERT INTO document (
             title,
             url,
-            raw_content,
+            raw_content
+        )
+        VALUES (?, ?, ?);
+        """
+        insert_wiki_page_query = """
+        INSERT INTO wiki_page (
+            document_id,
+            page_id,
             categories,
             images,
             links,
@@ -76,16 +107,20 @@ class RedbookDatabase:
             displaytitle,
             properties
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         with self.connect() as conn:
-            cursor = conn.execute(
-                insert_query,
+            cursor = conn.execute(insert_document_query, (page.title, page.url, page.content))
+            if cursor.lastrowid is None:
+                logger.warning('Failed to insert document: lastrowid is None')
+                return -1
+
+            document_id = int(cursor.lastrowid)
+            conn.execute(
+                insert_wiki_page_query,
                 (
+                    document_id,
                     page.pageid,
-                    page.title,
-                    page.url,
-                    page.content,
                     json.dumps(page.categories or [], ensure_ascii=False),
                     json.dumps(page.images or [], ensure_ascii=False),
                     json.dumps(page.links or [], ensure_ascii=False),
@@ -96,10 +131,53 @@ class RedbookDatabase:
                     json.dumps(page.properties or [], ensure_ascii=False),
                 ),
             )
+            return document_id
+
+    def insert_book(self, book: Book) -> int:
+        insert_document_query = """
+        INSERT INTO document (
+            title,
+            url,
+            raw_content
+        )
+        VALUES (?, ?, ?);
+        """
+        insert_book_query = """
+        INSERT INTO book (
+            document_id,
+            author,
+            publisher,
+            published_year,
+            isbn,
+            language,
+            source_path,
+            file_format
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """
+
+        source_url = book.url or book.source_path
+        with self.connect() as conn:
+            cursor = conn.execute(insert_document_query, (book.title, source_url, book.content))
             if cursor.lastrowid is None:
-                logger.warning('Failed to insert page: lastrowid is None')
+                logger.warning('Failed to insert document for book: lastrowid is None')
                 return -1
-            return cursor.lastrowid
+
+            document_id = int(cursor.lastrowid)
+            conn.execute(
+                insert_book_query,
+                (
+                    document_id,
+                    book.author,
+                    book.publisher,
+                    book.published_year,
+                    book.isbn,
+                    book.language,
+                    book.source_path,
+                    book.file_format,
+                ),
+            )
+            return document_id
 
     def insert_chunk(self, document_id: int, chunk_index: int, content: str, token_count: int) -> int:
         insert_query = """
@@ -113,18 +191,24 @@ class RedbookDatabase:
                 return -1
             return cursor.lastrowid
 
-    def page_count(self) -> int:
-        query = 'SELECT COUNT(*) FROM page;'
+    def document_count(self) -> int:
+        query = 'SELECT COUNT(*) FROM document;'
         with self.connect() as conn:
             row = conn.execute(query).fetchone()
             if row is None:
                 return 0
             return int(row[0])
 
-    def page_exists(self, title: str) -> bool:
-        query = 'SELECT 1 FROM page WHERE title = ? LIMIT 1;'
+    def document_exists(self, title: str) -> bool:
+        query = 'SELECT 1 FROM document WHERE title = ? LIMIT 1;'
         with self.connect() as conn:
             row = conn.execute(query, (title,)).fetchone()
+            return row is not None
+
+    def book_exists(self, source_path: str) -> bool:
+        query = 'SELECT 1 FROM book WHERE source_path = ? LIMIT 1;'
+        with self.connect() as conn:
+            row = conn.execute(query, (source_path,)).fetchone()
             return row is not None
 
     def _create_index_table(self) -> None:
@@ -137,14 +221,24 @@ class RedbookDatabase:
         """
         self.execute(create_table_query)
 
-    def _create_page_table(self) -> None:
+    def _create_document_table(self) -> None:
         create_table_query = """
-        CREATE TABLE IF NOT EXISTS page (
+        CREATE TABLE IF NOT EXISTS document (
             document_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            page_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             url TEXT,
             raw_content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        self.execute(create_table_query)
+
+    def _create_wiki_page_table(self) -> None:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS wiki_page (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id INTEGER NOT NULL,
+            page_id INTEGER NOT NULL,
             categories TEXT,
             images TEXT,
             links TEXT,
@@ -153,7 +247,26 @@ class RedbookDatabase:
             revid INTEGER,
             displaytitle TEXT,
             properties TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (document_id) REFERENCES document (document_id) ON DELETE CASCADE
+        );
+        """
+        self.execute(create_table_query)
+
+    def _create_book_table(self) -> None:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS book (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id INTEGER NOT NULL UNIQUE,
+            author TEXT,
+            publisher TEXT,
+            published_year INTEGER,
+            isbn TEXT,
+            language TEXT,
+            source_path TEXT,
+            file_format TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (document_id) REFERENCES document (document_id) ON DELETE CASCADE
         );
         """
         self.execute(create_table_query)
@@ -167,12 +280,14 @@ class RedbookDatabase:
             content TEXT NOT NULL,
             token_count INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (document_id) REFERENCES page (document_id) ON DELETE CASCADE
+            FOREIGN KEY (document_id) REFERENCES document (document_id) ON DELETE CASCADE
         );
         """
         self.execute(create_table_query)
 
     def deploy(self) -> None:
         self._create_index_table()
-        self._create_page_table()
+        self._create_document_table()
+        self._create_wiki_page_table()
+        self._create_book_table()
         self._create_chunks_table()

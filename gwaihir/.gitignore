@@ -219,3 +219,5 @@ __marimo__/
 test-results.xml
 
 *.DS_Store
+
+database/*

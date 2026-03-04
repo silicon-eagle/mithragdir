@@ -219,7 +219,7 @@ class TolkienGatewayClient:
 
         stored = 0
         for page in self._pending_pages:
-            self.db.insert_page(page)
+            self.db.insert_document(page)
             stored += 1
 
         logger.info(f'Flushed {stored} pages to database')
@@ -258,12 +258,11 @@ class TolkienGatewayClient:
                 title = item.title
 
                 # Skip network work if this page is already stored.
-                if self.db.page_exists(title):
+                if self.db.document_exists(title):
                     processed_count += 1
                     logger.info(
                         f'Crawl progress: {processed_count}/{total_pages} (stored={stored_count}, failed={failed_count}) - skipped existing {title}'
                     )
-                    time.sleep(pause_seconds)
                     continue
 
                 max_attempts = nr_attempts + 1

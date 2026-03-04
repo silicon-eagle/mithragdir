@@ -5,10 +5,13 @@ description = 'Add your description here'
 readme = 'README.md'
 requires-python = '>=3.13'
 dependencies = [
+    "beautifulsoup4>=4.14.2",
     "curl-cffi>=0.13.0",
+    "ebooklib>=0.20",
     "httpx>=0.28.0",
     "loguru>=0.7.3",
     "numpy>=2.4.2",
+    "pypdf>=6.0.0",
 ]
 
 [dependency-groups]
@@ -31,9 +34,9 @@ build-backend = 'hatchling.build'
 # Pytest configuration (adjust coverage targets to your actual packages)
 [tool.pytest.ini_options]
 addopts = [
-    '--cov=gwaihir',
-    '--cov-report=xml',
-    '--junitxml=test-results.xml',
+    # '--cov=gwaihir',
+    # '--cov-report=xml',
+    # '--junitxml=test-results.xml',
     '-s', # write logging in the CLI
     # '-m', # add marks
     # 'not llm',
