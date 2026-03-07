@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Index, Page, Text
+from gwaihir.db.models import Chunk, Index, Page, Text
 
 
 @pytest.fixture
@@ -91,6 +91,21 @@ class TestRedbookDatabase:
         doc_id = db.insert_document(Page(title='Title', pageid=123, url='http://example.com', content='content'))
         chunk_ids = [db.insert_chunk(doc_id, i, f'chunk {i}', i + 1) for i in range(3)]
         assert len(set(chunk_ids)) == 3
+
+    def test_get_chunks_returns_chunk_objects_with_parsed_metadata(self, db: RedbookDatabase) -> None:
+        db.insert_index(Index(title='Title', pageid=123, url='http://example.com'))
+        doc_id = db.insert_document(Page(title='Title', pageid=123, url='http://example.com', content='content'))
+        db.insert_chunk(doc_id, 0, 'first chunk', 2, {'source': 'unit-test', 'position': 0})
+        db.insert_chunk(doc_id, 1, 'second chunk', 2, {'source': 'unit-test', 'position': 1})
+
+        chunks = db.get_chunks(document_id=doc_id)
+
+        assert len(chunks) == 2
+        assert all(isinstance(chunk, Chunk) for chunk in chunks)
+        assert chunks[0].chunk_index == 0
+        assert chunks[1].chunk_index == 1
+        assert chunks[0].meta_data == {'source': 'unit-test', 'position': 0}
+        assert isinstance(chunks[0].meta_data, dict)
 
     def test_document_exists(self, db: RedbookDatabase) -> None:
         db.insert_index(Index(title='Title', pageid=123, url='http://example.com'))

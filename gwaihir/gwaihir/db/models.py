@@ -33,3 +33,13 @@ class Text(BaseModel):
     isbn: str | None = None
     language: str | None = None
     file_format: str | None = None
+
+
+class Chunk(BaseModel):
+    id: int
+    document_id: int
+    chunk_index: int
+    content: str
+    token_count: int
+    meta_data: dict[str, object]
+    created_at: str | None = None

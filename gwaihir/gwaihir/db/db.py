@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from gwaihir.db.models import Index, Page, Text
+from gwaihir.db.models import Chunk, Index, Page, Text
 
 
 class RedbookDatabase:
@@ -200,6 +200,34 @@ class RedbookDatabase:
                 return -1
             return cursor.lastrowid
 
+    def get_chunks(self, document_id: int | None = None) -> list[Chunk]:
+        base_query = 'SELECT id, document_id, chunk_index, content, token_count, meta_data, created_at FROM chunks'
+        params: tuple[Any, ...] = ()
+        if document_id is None:
+            query = f'{base_query} ORDER BY document_id, chunk_index;'
+        else:
+            query = f'{base_query} WHERE document_id = ? ORDER BY chunk_index;'
+            params = (document_id,)
+
+        with self.connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+
+        chunks: list[Chunk] = []
+        for row in rows:
+            parsed_meta_data = self._parse_meta_data(row[5])
+            chunks.append(
+                Chunk(
+                    id=int(row[0]),
+                    document_id=int(row[1]),
+                    chunk_index=int(row[2]),
+                    content=str(row[3]),
+                    token_count=int(row[4]),
+                    meta_data=parsed_meta_data,
+                    created_at=str(row[6]) if row[6] is not None else None,
+                )
+            )
+        return chunks
+
     def document_count(self) -> int:
         query = 'SELECT COUNT(*) FROM document;'
         with self.connect() as conn:
@@ -219,6 +247,22 @@ class RedbookDatabase:
         with self.connect() as conn:
             row = conn.execute(query, (source_path,)).fetchone()
             return row is not None
+
+    def _parse_meta_data(self, raw_meta_data: str | None) -> dict[str, object]:
+        if not raw_meta_data:
+            return {}
+
+        try:
+            parsed = json.loads(raw_meta_data)
+        except json.JSONDecodeError:
+            logger.warning('Failed to parse chunk metadata JSON, returning empty metadata.')
+            return {}
+
+        if isinstance(parsed, dict):
+            return parsed
+
+        logger.warning('Chunk metadata is not a JSON object, returning empty metadata.')
+        return {}
 
     def _create_index_table(self) -> None:
         create_table_query = """

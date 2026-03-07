@@ -21,8 +21,8 @@ text_client = TextClient(
 )
 
 if __name__ == '__main__':
-    index = wiki_client.get_index(batch_size=250, pause_seconds=1.0)
-    wiki_client.crawl(index=index, pause_seconds=1.0, nr_attempts=3, retry_sleep_seconds=30.0)
+    index = wiki_client.get_index(batch_size=250, pause_seconds=0.5)
+    wiki_client.crawl(index=index, pause_seconds=0.5, nr_attempts=2, retry_sleep_seconds=30.0)
     text_client.ingest()
     text_client.close()
     db.close()
