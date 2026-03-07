@@ -4,16 +4,13 @@ import csv
 import time
 from pathlib import Path
 
-from bs4 import BeautifulSoup
-from ebooklib import ITEM_DOCUMENT, epub
 from loguru import logger
-from pypdf import PdfReader
 
 from gwaihir.db.db import RedbookDatabase
 from gwaihir.db.models import Book
 
 
-class BookClient:
+class TextClient:
     def __init__(
         self,
         db: RedbookDatabase,
@@ -26,7 +23,7 @@ class BookClient:
         self.db = db
         self.batch_size = batch_size
         self._pending_books: list[Book] = []
-        logger.info(f'Initialized BookClient(source_folder={self.source_folder}, index_path={self.index_path}, batch_size={self.batch_size})')
+        logger.info(f'Initialized TextClient(source_folder={self.source_folder}, index_path={self.index_path}, batch_size={self.batch_size})')
 
     def _iter_index_rows(self) -> list[dict[str, str]]:
         if not self.index_path.exists():
@@ -52,13 +49,16 @@ class BookClient:
 
         for row in rows:
             relative_file = row['file']
-            file_path = (self.source_folder / relative_file).resolve()
+            base_path = self.source_folder / relative_file
+            if base_path.suffix:
+                base_path = base_path.with_suffix('')
+            file_path = (base_path.parent / f'{base_path.name}.txt').resolve()
             if not file_path.exists() or not file_path.is_file():
                 missing_files += 1
                 logger.warning(f'Indexed file is missing and will be skipped: {file_path}')
                 continue
 
-            if file_path.suffix.lower() not in {'.pdf', '.epub'}:
+            if file_path.suffix.lower() != '.txt':
                 logger.warning(f'Indexed file has unsupported format and will be skipped: {file_path}')
                 continue
 
@@ -69,31 +69,10 @@ class BookClient:
 
         return entries
 
-    def _extract_pdf_text(self, file_path: Path) -> str:
-        reader = PdfReader(str(file_path))
-        chunks: list[str] = []
-        for page in reader.pages:
-            extracted = page.extract_text() or ''
-            if extracted:
-                chunks.append(extracted)
-        return '\n\n'.join(chunks)
-
-    def _extract_epub_text(self, file_path: Path) -> str:
-        book = epub.read_epub(str(file_path))
-        chunks: list[str] = []
-        for item in book.get_items_of_type(ITEM_DOCUMENT):
-            soup = BeautifulSoup(item.get_body_content(), 'html.parser')
-            text = soup.get_text(separator=' ', strip=True)
-            if text:
-                chunks.append(text)
-        return '\n\n'.join(chunks)
-
     def _extract_text(self, file_path: Path) -> str:
         suffix = file_path.suffix.lower()
-        if suffix == '.pdf':
-            return self._extract_pdf_text(file_path)
-        if suffix == '.epub':
-            return self._extract_epub_text(file_path)
+        if suffix == '.txt':
+            return file_path.read_text(encoding='utf-8')
         raise ValueError(f'Unsupported book format: {file_path.suffix}')
 
     def _build_book(self, file_path: Path, metadata: dict[str, str]) -> Book:
@@ -182,5 +161,5 @@ class BookClient:
         return flushed
 
     def close(self) -> None:
-        logger.info('Closing BookClient and flushing pending books')
+        logger.info('Closing TextClient and flushing pending books')
         self.flush()

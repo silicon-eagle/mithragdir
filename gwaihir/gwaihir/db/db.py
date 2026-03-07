@@ -291,3 +291,8 @@ class RedbookDatabase:
         self._create_wiki_page_table()
         self._create_book_table()
         self._create_chunks_table()
+
+    def close(self) -> None:
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
