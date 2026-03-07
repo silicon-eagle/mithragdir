@@ -9,7 +9,7 @@ from gwaihir.retriever.text_client import TextClient
 def db(tmp_path: Path) -> RedbookDatabase:
     database = RedbookDatabase(db_path=tmp_path / 'test_text_client.db')
     database._create_document_table()
-    database._create_book_table()
+    database._create_text_table()
     return database
 
 
@@ -39,7 +39,7 @@ class TestTextClient:
     ) -> None:
         first_path = source_folder / 'book_one.txt'
         second_path = source_folder / 'book_two.txt'
-        source_folder / 'missing.txt'
+        _missing_path = source_folder / 'missing.txt'
 
         first_path.write_text('content from book one', encoding='utf-8')
         second_path.write_text('content from book two', encoding='utf-8')
@@ -61,13 +61,13 @@ class TestTextClient:
         assert db.document_count() == 2
 
         with db.connect() as conn:
-            book_count_row = conn.execute('SELECT COUNT(*) FROM book;').fetchone()
+            book_count_row = conn.execute('SELECT COUNT(*) FROM text;').fetchone()
 
         assert book_count_row is not None
         assert int(book_count_row[0]) == 2
 
         with db.connect() as conn:
-            row = conn.execute('SELECT author, publisher, published_year, isbn, language FROM book ORDER BY id LIMIT 1').fetchone()
+            row = conn.execute('SELECT author, publisher, published_year, isbn, language FROM text ORDER BY id LIMIT 1').fetchone()
 
         assert row is not None
         assert row[0] == 'Author One'

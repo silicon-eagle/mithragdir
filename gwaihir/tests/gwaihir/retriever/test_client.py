@@ -35,14 +35,14 @@ class TestTolkienGatewayClient:
         assert all(page.pageid > 0 for page in pages)
         assert all(page.url.startswith('https://tolkiengateway.net/wiki/') for page in pages)
 
-    def test_get_page_returns_content(self, tmp_path: Path, client: TolkienGatewayClient) -> None:
+    def test_get_page_returns_content(self, client: TolkienGatewayClient) -> None:
         page = client.get_page('Gandalf')
         assert page.title
         assert page.pageid > 0
         assert page.url.startswith('https://tolkiengateway.net/wiki/')
         assert page.content
-        path = page.dump_to_json(base_path=tmp_path)
-        assert path.exists()
+        serialized = page.model_dump_json()
+        assert 'Gandalf' in serialized
 
     def test_store_page_flushes_at_batch_size(self, client: TolkienGatewayClient, db: RedbookDatabase) -> None:
         pages = [Page(title=f'Page {i}', pageid=i, url=f'http://example/{i}', content=f'content {i}') for i in range(1, 26)]

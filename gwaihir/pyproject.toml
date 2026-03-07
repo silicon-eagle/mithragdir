@@ -9,8 +9,10 @@ dependencies = [
     "curl-cffi>=0.13.0",
     "ebooklib>=0.20",
     "httpx>=0.28.0",
+    "langchain>=1.2.10",
     "loguru>=0.7.3",
     "numpy>=2.4.2",
+    "pydantic>=2.11.9",
     "pypdf>=6.0.0",
 ]
 

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Book, Index, Page
+from gwaihir.db.models import Index, Page, Text
 
 
 @pytest.fixture
@@ -11,7 +11,7 @@ def db(tmp_path: Path) -> RedbookDatabase:
     database._create_index_table()
     database._create_document_table()
     database._create_wiki_page_table()
-    database._create_book_table()
+    database._create_text_table()
     database._create_chunks_table()
     return database
 
@@ -76,9 +76,15 @@ class TestRedbookDatabase:
     def test_insert_chunk(self, db: RedbookDatabase) -> None:
         db.insert_index(Index(title='Title', pageid=123, url='http://example.com'))
         doc_id = db.insert_document(Page(title='Title', pageid=123, url='http://example.com', content='content'))
-        chunk_id = db.insert_chunk(doc_id, 0, 'chunk text', 10)
+        chunk_id = db.insert_chunk(doc_id, 0, 'chunk text', 10, {'source': 'unit-test'})
         assert isinstance(chunk_id, int)
         assert chunk_id > 0
+
+        with db.connect() as conn:
+            row = conn.execute('SELECT meta_data FROM chunks WHERE id = ?', (chunk_id,)).fetchone()
+
+        assert row is not None
+        assert row[0] == '{"source": "unit-test"}'
 
     def test_insert_multiple_chunks(self, db: RedbookDatabase) -> None:
         db.insert_index(Index(title='Title', pageid=123, url='http://example.com'))
@@ -128,8 +134,8 @@ class TestRedbookDatabase:
         assert row[8] == 'Metadata Title'
         assert row[9] is not None
 
-    def test_insert_book_creates_document_and_book(self, db: RedbookDatabase) -> None:
-        book = Book(
+    def test_insert_text_creates_document_and_text(self, db: RedbookDatabase) -> None:
+        book = Text(
             title='The Hobbit',
             content='In a hole in the ground there lived a hobbit.',
             author='J.R.R. Tolkien',
@@ -140,12 +146,12 @@ class TestRedbookDatabase:
             source_path='/tmp/the_hobbit.pdf',
             file_format='pdf',
         )
-        document_id = db.insert_book(book)
+        document_id = db.insert_text(book)
 
         with db.connect() as conn:
             document_row = conn.execute('SELECT document_id, title, raw_content FROM document WHERE document_id = ?', (document_id,)).fetchone()
-            book_row = conn.execute(
-                'SELECT document_id, author, publisher, published_year, isbn, language, source_path, file_format FROM book WHERE document_id = ?',
+            text_row = conn.execute(
+                'SELECT document_id, author, publisher, published_year, isbn, language, source_path, file_format FROM text WHERE document_id = ?',
                 (document_id,),
             ).fetchone()
 
@@ -154,22 +160,22 @@ class TestRedbookDatabase:
         assert document_row[1] == 'The Hobbit'
         assert document_row[2] == 'In a hole in the ground there lived a hobbit.'
 
-        assert book_row is not None
-        assert int(book_row[0]) == document_id
-        assert book_row[1] == 'J.R.R. Tolkien'
-        assert book_row[2] == 'Allen & Unwin'
-        assert int(book_row[3]) == 1937
-        assert book_row[4] == '9780000000001'
-        assert book_row[5] == 'en'
-        assert book_row[6] == '/tmp/the_hobbit.pdf'
-        assert book_row[7] == 'pdf'
+        assert text_row is not None
+        assert int(text_row[0]) == document_id
+        assert text_row[1] == 'J.R.R. Tolkien'
+        assert text_row[2] == 'Allen & Unwin'
+        assert int(text_row[3]) == 1937
+        assert text_row[4] == '9780000000001'
+        assert text_row[5] == 'en'
+        assert text_row[6] == '/tmp/the_hobbit.pdf'
+        assert text_row[7] == 'pdf'
 
-    def test_book_exists(self, db: RedbookDatabase) -> None:
+    def test_text_exists(self, db: RedbookDatabase) -> None:
         source_path = '/tmp/fellowship.epub'
-        db.insert_book(Book(title='Fellowship', content='One Ring', author='J.R.R. Tolkien', source_path=source_path, file_format='epub'))
+        db.insert_text(Text(title='Fellowship', content='One Ring', author='J.R.R. Tolkien', source_path=source_path, file_format='epub'))
 
-        assert db.book_exists(source_path)
-        assert not db.book_exists('/tmp/missing.pdf')
+        assert db.text_exists(source_path)
+        assert not db.text_exists('/tmp/missing.pdf')
 
     def test_db_file_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / 'test.db'
@@ -177,7 +183,7 @@ class TestRedbookDatabase:
         database._create_index_table()
         database._create_document_table()
         database._create_wiki_page_table()
-        database._create_book_table()
+        database._create_text_table()
         assert db_path.exists()
 
     def test_parent_directory_created(self, tmp_path: Path) -> None:

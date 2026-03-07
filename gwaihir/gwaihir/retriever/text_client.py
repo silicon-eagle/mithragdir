@@ -7,7 +7,7 @@ from pathlib import Path
 from loguru import logger
 
 from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Book
+from gwaihir.db.models import Text
 
 
 class TextClient:
@@ -22,7 +22,7 @@ class TextClient:
         self.index_path = self.source_folder / index_filename
         self.db = db
         self.batch_size = batch_size
-        self._pending_books: list[Book] = []
+        self._pending_books: list[Text] = []
         logger.info(f'Initialized TextClient(source_folder={self.source_folder}, index_path={self.index_path}, batch_size={self.batch_size})')
 
     def _iter_index_rows(self) -> list[dict[str, str]]:
@@ -75,7 +75,7 @@ class TextClient:
             return file_path.read_text(encoding='utf-8')
         raise ValueError(f'Unsupported book format: {file_path.suffix}')
 
-    def _build_book(self, file_path: Path, metadata: dict[str, str]) -> Book:
+    def _build_book(self, file_path: Path, metadata: dict[str, str]) -> Text:
         logger.debug(f'Extracting text from book file: {file_path}')
         content = self._extract_text(file_path)
         title = metadata.get('title') or file_path.stem.replace('_', ' ').strip()
@@ -86,7 +86,7 @@ class TextClient:
         if published_year_value.isdigit():
             published_year = int(published_year_value)
 
-        return Book(
+        return Text(
             title=title,
             content=content,
             author=metadata.get('author') or 'Unknown',
@@ -99,7 +99,7 @@ class TextClient:
             file_format=file_path.suffix.lower().lstrip('.'),
         )
 
-    def store_book(self, book: Book) -> None:
+    def store_book(self, book: Text) -> None:
         self._pending_books.append(book)
         logger.debug(f'Buffered book {book.title} (pending={len(self._pending_books)}/{self.batch_size})')
         if len(self._pending_books) >= self.batch_size:
@@ -113,7 +113,7 @@ class TextClient:
 
         stored = 0
         for book in self._pending_books:
-            self.db.insert_book(book)
+            self.db.insert_text(book)
             stored += 1
 
         logger.info(f'Flushed {stored} books to database')
@@ -135,7 +135,7 @@ class TextClient:
         try:
             for file_path, metadata in entries:
                 source_path = str(file_path.resolve())
-                if self.db.book_exists(source_path):
+                if self.db.text_exists(source_path):
                     skipped += 1
                     processed += 1
                     logger.info(f'Book progress: {processed}/{total} (stored={stored}, skipped={skipped}, failed={failed})')

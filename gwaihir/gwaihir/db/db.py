@@ -3,10 +3,11 @@ import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
-from gwaihir.db.models import Book, Index, Page
+from gwaihir.db.models import Index, Page, Text
 
 
 class RedbookDatabase:
@@ -133,7 +134,7 @@ class RedbookDatabase:
             )
             return document_id
 
-    def insert_book(self, book: Book) -> int:
+    def insert_text(self, text: Text) -> int:
         insert_document_query = """
         INSERT INTO document (
             title,
@@ -142,8 +143,8 @@ class RedbookDatabase:
         )
         VALUES (?, ?, ?);
         """
-        insert_book_query = """
-        INSERT INTO book (
+        insert_text_query = """
+        INSERT INTO text (
             document_id,
             author,
             publisher,
@@ -156,36 +157,44 @@ class RedbookDatabase:
         VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """
 
-        source_url = book.url or book.source_path
+        source_url = text.url or text.source_path
         with self.connect() as conn:
-            cursor = conn.execute(insert_document_query, (book.title, source_url, book.content))
+            cursor = conn.execute(insert_document_query, (text.title, source_url, text.content))
             if cursor.lastrowid is None:
-                logger.warning('Failed to insert document for book: lastrowid is None')
+                logger.warning('Failed to insert document for text: lastrowid is None')
                 return -1
 
             document_id = int(cursor.lastrowid)
             conn.execute(
-                insert_book_query,
+                insert_text_query,
                 (
                     document_id,
-                    book.author,
-                    book.publisher,
-                    book.published_year,
-                    book.isbn,
-                    book.language,
-                    book.source_path,
-                    book.file_format,
+                    text.author,
+                    text.publisher,
+                    text.published_year,
+                    text.isbn,
+                    text.language,
+                    text.source_path,
+                    text.file_format,
                 ),
             )
             return document_id
 
-    def insert_chunk(self, document_id: int, chunk_index: int, content: str, token_count: int) -> int:
+    def insert_chunk(
+        self,
+        document_id: int,
+        chunk_index: int,
+        content: str,
+        token_count: int,
+        meta_data: dict[str, Any] | None = None,
+    ) -> int:
         insert_query = """
-        INSERT INTO chunks (document_id, chunk_index, content, token_count)
-        VALUES (?, ?, ?, ?);
+        INSERT INTO chunks (document_id, chunk_index, content, token_count, meta_data)
+        VALUES (?, ?, ?, ?, ?);
         """
+        meta_data_json = json.dumps(meta_data or {}, ensure_ascii=False)
         with self.connect() as conn:
-            cursor = conn.execute(insert_query, (document_id, chunk_index, content, token_count))
+            cursor = conn.execute(insert_query, (document_id, chunk_index, content, token_count, meta_data_json))
             if cursor.lastrowid is None:
                 logger.warning('Failed to insert chunk: lastrowid is None')
                 return -1
@@ -205,8 +214,8 @@ class RedbookDatabase:
             row = conn.execute(query, (title,)).fetchone()
             return row is not None
 
-    def book_exists(self, source_path: str) -> bool:
-        query = 'SELECT 1 FROM book WHERE source_path = ? LIMIT 1;'
+    def text_exists(self, source_path: str) -> bool:
+        query = 'SELECT 1 FROM text WHERE source_path = ? LIMIT 1;'
         with self.connect() as conn:
             row = conn.execute(query, (source_path,)).fetchone()
             return row is not None
@@ -253,9 +262,20 @@ class RedbookDatabase:
         """
         self.execute(create_table_query)
 
-    def _create_book_table(self) -> None:
+    def _table_exists(self, conn: sqlite3.Connection, table_name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1;",
+            (table_name,),
+        ).fetchone()
+        return row is not None
+
+    def _create_text_table(self) -> None:
+        with self.connect() as conn:
+            if self._table_exists(conn, 'book') and not self._table_exists(conn, 'text'):
+                conn.execute('ALTER TABLE book RENAME TO text;')
+
         create_table_query = """
-        CREATE TABLE IF NOT EXISTS book (
+        CREATE TABLE IF NOT EXISTS text (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             document_id INTEGER NOT NULL UNIQUE,
             author TEXT,
@@ -269,7 +289,8 @@ class RedbookDatabase:
             FOREIGN KEY (document_id) REFERENCES document (document_id) ON DELETE CASCADE
         );
         """
-        self.execute(create_table_query)
+        with self.connect() as conn:
+            conn.execute(create_table_query)
 
     def _create_chunks_table(self) -> None:
         create_table_query = """
@@ -279,17 +300,22 @@ class RedbookDatabase:
             chunk_index INTEGER NOT NULL,
             content TEXT NOT NULL,
             token_count INTEGER NOT NULL,
+            meta_data TEXT NOT NULL DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (document_id) REFERENCES document (document_id) ON DELETE CASCADE
         );
         """
-        self.execute(create_table_query)
+        with self.connect() as conn:
+            conn.execute(create_table_query)
+            columns = {str(row[1]) for row in conn.execute('PRAGMA table_info(chunks);').fetchall()}
+            if 'meta_data' not in columns:
+                conn.execute("ALTER TABLE chunks ADD COLUMN meta_data TEXT NOT NULL DEFAULT '{}';")
 
     def deploy(self) -> None:
         self._create_index_table()
         self._create_document_table()
         self._create_wiki_page_table()
-        self._create_book_table()
+        self._create_text_table()
         self._create_chunks_table()
 
     def close(self) -> None:

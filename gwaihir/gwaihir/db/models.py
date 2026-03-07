@@ -1,19 +1,13 @@
-import json
-import re
-from dataclasses import asdict, dataclass
-from datetime import datetime
-from pathlib import Path
+from pydantic import BaseModel
 
 
-@dataclass
-class Index:
+class Index(BaseModel):
     title: str
     pageid: int
     url: str
 
 
-@dataclass
-class Page:
+class Page(BaseModel):
     title: str
     pageid: int
     url: str
@@ -28,8 +22,7 @@ class Page:
     properties: list[dict[str, object]] | None = None
 
 
-@dataclass
-class Book:
+class Text(BaseModel):
     title: str
     content: str
     author: str | None = None
@@ -40,18 +33,3 @@ class Book:
     isbn: str | None = None
     language: str | None = None
     file_format: str | None = None
-
-    def dump_to_json(self, base_path: str | Path | None = None, filename: str | None = None) -> Path:
-        if filename is None:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            safe_title = re.sub(r'[^A-Za-z0-9._-]+', '_', self.title).strip('_')
-            if not safe_title:
-                safe_title = 'page'
-            filename = f'{timestamp}_{safe_title}.json'
-
-        base_path = Path.cwd() if base_path is None else Path(base_path)
-        path = base_path / filename
-        with path.open('w', encoding='utf-8') as file:
-            json.dump(asdict(self), file, ensure_ascii=False, indent=2)
-
-        return path
