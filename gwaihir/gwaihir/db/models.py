@@ -43,3 +43,11 @@ class Chunk(BaseModel):
     token_count: int
     meta_data: dict[str, object]
     created_at: str | None = None
+
+
+class EncodedChunk(BaseModel):
+    chunk_id: int
+    document_id: int
+    chunk_index: int
+    vector: list[float]
+    payload: dict[str, object]

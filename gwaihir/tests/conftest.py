@@ -18,6 +18,14 @@ def test_path() -> Path:
 
 
 @pytest.fixture(scope='session', autouse=True)
+def root_path(test_path: Path) -> Path:
+    """Return path to project root directory."""
+    root_path = test_path.parent
+    logger.info(f'Project root path: {root_path!r}')
+    return root_path
+
+
+@pytest.fixture(scope='session', autouse=True)
 def test_outputs_path(test_path: Path) -> Path:
     """Return the path to test outputs directory."""
     test_outputs_path = test_path / 'outputs'
@@ -26,11 +34,14 @@ def test_outputs_path(test_path: Path) -> Path:
 
 
 @pytest.fixture(scope='session', autouse=True)
-def setup_environment(test_path: Path) -> bool:
-    env_file = test_path / '.env'
-    loaded = load_dotenv(dotenv_path=env_file)
-    # If .env is absent but required vars are already in the environment, don't force a skip.
-    return loaded or ('ADO_PAT' in os.environ)
+def setup_environment(root_path: Path) -> bool:
+    root_env_file = root_path / '.env'
+
+    loaded_root = load_dotenv(dotenv_path=root_env_file)
+    loaded = loaded_root or ('HF_TOKEN' in os.environ)
+
+    logger.info(f'Environment variables loaded from {root_env_file!r}: {loaded_root}')
+    return loaded
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from gwaihir.db.db import RedbookDatabase
-from gwaihir.processing.chunker import Chunker
+from gwaihir.processing.chunker import Chunker, ContentType
 from loguru import logger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +51,8 @@ def chunk_documents(db: RedbookDatabase, chunk_size: int, chunk_overlap: int) ->
         title = str(row[1]) if row[1] is not None else None
         url = str(row[2]) if row[2] is not None else None
         content = str(row[3]) if row[3] is not None else ''
-        content_type = str(row[4])
+        raw_content_type = str(row[4])
+        content_type = ContentType(raw_content_type)
 
         if not content.strip():
             logger.warning(f'Skipping empty document content for document_id={document_id}')

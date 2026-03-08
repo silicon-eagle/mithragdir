@@ -8,6 +8,32 @@ Minimal tools for crawling Tolkien Gateway pages and storing them locally.
 uv sync
 ```
 
+## Embedding model auth (Hugging Face)
+
+The default embedding model is `google/embeddinggemma-300m` in `gwaihir/processing/embedding.py`.
+This model is gated on Hugging Face, so you must authenticate before first use.
+
+1. Request/confirm access to the model: `https://huggingface.co/google/embeddinggemma-300m`
+2. Log in locally:
+
+```bash
+uv run huggingface-cli login
+```
+
+You can also use an environment variable instead of interactive login:
+
+```bash
+export HF_TOKEN=<your_hugging_face_token>
+```
+
+Recommended for local development: add it to a project `.env` file (already gitignored):
+
+```bash
+HF_TOKEN=<your_hugging_face_token>
+```
+
+Without auth, embedding-related tests and runtime embedding calls will skip/fail with `401` or `gated repo` errors.
+
 ## Quick start
 
 ```python

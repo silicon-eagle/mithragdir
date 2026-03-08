@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Literal
+from enum import StrEnum
+from typing import Any
 
 from langchain_text_splitters import HTMLHeaderTextSplitter, RecursiveCharacterTextSplitter
 from loguru import logger
 
 from gwaihir.db.db import RedbookDatabase
 
-ContentType = Literal['text', 'html']
+
+class ContentType(StrEnum):
+    TEXT = 'text'
+    HTML = 'html'
 
 
 class Chunker:
@@ -41,13 +45,13 @@ class Chunker:
         self,
         document_id: int,
         content: str,
-        content_type: ContentType = 'text',
+        content_type: ContentType = ContentType.TEXT,
         metadata: dict[str, Any] | None = None,
     ) -> int:
         base_metadata: dict[str, Any] = dict(metadata or {})
-        base_metadata['content_type'] = content_type
+        base_metadata['content_type'] = content_type.value
 
-        if content_type == 'html':
+        if content_type == ContentType.HTML:
             documents = self._html_splitter.split_text(content)
             chunk_method = 'html_header_splitter'
         else:

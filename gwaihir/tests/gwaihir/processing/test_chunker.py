@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from gwaihir.db.db import RedbookDatabase
 from gwaihir.db.models import Chunk, Page, Text
-from gwaihir.processing.chunker import Chunker
+from gwaihir.processing.chunker import Chunker, ContentType
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ class TestChunker:
         inserted = chunker.chunk_document(
             document_id=document_id,
             content=' '.join(['hobbit'] * 120),
-            content_type='text',
+            content_type=ContentType.TEXT,
             metadata={'title': 'Long Text', 'source_path': '/tmp/long_text.txt'},
         )
 
@@ -76,7 +76,7 @@ class TestChunker:
         inserted = chunker.chunk_document(
             document_id=document_id,
             content=html_content,
-            content_type='html',
+            content_type=ContentType.HTML,
             metadata={'title': 'Valinor', 'source': 'wiki'},
         )
 
