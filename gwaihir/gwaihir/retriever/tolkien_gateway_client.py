@@ -312,7 +312,7 @@ class TolkienGatewayClient:
         self._pending_pages.clear()
         return stored
 
-    def crawl(
+    def crawl(  # noqa: C901
         self,
         index: Index | list[Index] | None = None,
         limit: int | None = None,
@@ -334,6 +334,8 @@ class TolkienGatewayClient:
         """
         if nr_attempts < 0:
             raise ValueError('nr_attemps must be >= 0')
+        if limit is not None and limit < 0:
+            raise ValueError('limit must be >= 0')
 
         logger.info(f'Starting crawl(limit={limit}, pause_seconds={pause_seconds}, nr_attemps={nr_attempts})')
 
@@ -344,6 +346,10 @@ class TolkienGatewayClient:
             crawl_index = [index]
         else:
             crawl_index = index
+
+        # Apply crawl limit even when an explicit index list is passed in.
+        if limit is not None:
+            crawl_index = crawl_index[:limit]
 
         total_pages = len(crawl_index)
         logger.info(f'Crawl index contains {total_pages} pages')

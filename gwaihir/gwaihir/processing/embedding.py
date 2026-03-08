@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from itertools import groupby
 
 from fastembed import SparseTextEmbedding
 from loguru import logger
@@ -155,39 +156,50 @@ class ChunkEmbedder:
         self,
         document_id: int | None = None,
         batch_size: int = 32,
-        create_collection: bool = True,
     ) -> int:
         """Read DB chunks, encode dense+sparse vectors, and upsert hybrid points."""
         chunks = self.db.get_chunks(document_id=document_id)
+        scope = f'document_id={document_id}' if document_id is not None else 'all documents'
+        logger.info(f'Encoding and upserting {len(chunks)} chunks for {scope}')
+
         if not chunks:
             return 0
 
-        dense_vectors = self.encode_texts_dense(
-            texts=[chunk.content for chunk in chunks],
-            batch_size=batch_size,
-        )
-        sparse_vectors = self.encode_texts_sparse(
-            texts=[chunk.content for chunk in chunks],
-            batch_size=batch_size,
-        )
+        chunks_by_document = {int(doc_id): list(group_chunks) for doc_id, group_chunks in groupby(chunks, key=lambda chunk: chunk.document_id)}
+        total_documents = len(chunks_by_document)
 
-        if create_collection:
-            self.create_collection(
-                dense_vector_size=len(dense_vectors[0]),
+        upserted_total = 0
+        self.create_collection()
+
+        for index, (current_document_id, document_chunks) in enumerate(chunks_by_document.items(), start=1):
+            logger.info(f'Encoding document {index}/{total_documents}: document_id={current_document_id} with {len(document_chunks)} chunks')
+            dense_vectors = self.encode_texts_dense(
+                texts=[chunk.content for chunk in document_chunks],
+                batch_size=batch_size,
+            )
+            sparse_vectors = self.encode_texts_sparse(
+                texts=[chunk.content for chunk in document_chunks],
+                batch_size=batch_size,
             )
 
-        points = [
-            PointStruct(
-                id=chunk.id,
-                vector={
-                    self.dense_vector_name: dense_vector,
-                    self.sparse_vector_name: sparse_vector,
-                },
-                payload=chunk.build_payload(),
-            )
-            for chunk, dense_vector, sparse_vector in zip(chunks, dense_vectors, sparse_vectors, strict=True)
-        ]
+            points = [
+                PointStruct(
+                    id=chunk.id,
+                    vector={
+                        self.dense_vector_name: dense_vector,
+                        self.sparse_vector_name: sparse_vector,
+                    },
+                    payload=chunk.build_payload(),
+                )
+                for chunk, dense_vector, sparse_vector in zip(document_chunks, dense_vectors, sparse_vectors, strict=True)
+            ]
 
-        self.qdrant_client.upsert(collection_name=self.collection_name, points=points)
-        logger.info(f'Upserted {len(points)} hybrid vectors to {self.collection_name}')
-        return len(points)
+            self.qdrant_client.upsert(collection_name=self.collection_name, points=points)
+            upserted_total += len(points)
+            logger.info(
+                f'Upserted document {index}/{total_documents}: {len(points)} hybrid vectors '
+                f'for document_id={current_document_id} to {self.collection_name}'
+            )
+
+        logger.info(f'Upserted {upserted_total} hybrid vectors to {self.collection_name}')
+        return upserted_total

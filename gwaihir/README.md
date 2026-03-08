@@ -8,6 +8,44 @@ Minimal tools for crawling Tolkien Gateway pages and storing them locally.
 uv sync
 ```
 
+## CLI
+
+Run the full pipeline (read data, chunk, then encode):
+
+```bash
+uv run gwaihir
+```
+
+Run only specific stages by repeating `--step`:
+
+```bash
+# Only ingest wiki/text data into SQLite
+uv run gwaihir --step read-data
+
+# Only chunk existing documents in SQLite
+uv run gwaihir --step chunk
+
+# Only encode existing chunks to Qdrant
+uv run gwaihir --step encode
+
+# Run chunk + encode, skip read-data
+uv run gwaihir --step chunk --step encode
+```
+
+Show all options:
+
+```bash
+uv run gwaihir --help
+```
+
+Common options:
+
+- `--db-path`: SQLite file path (default: `database/redbook.db`)
+- `--text-source-folder`: location of local text sources (default: `database/texts`)
+- `--chunk-size` and `--chunk-overlap`: chunking configuration
+- `--qdrant-url`: Qdrant endpoint (can also be set via `QDRANT_URL`)
+- `--qdrant-api-key`: optional API key (can also be set via `QDRANT_API_KEY`)
+
 ## Embedding model auth (Hugging Face)
 
 The default embedding model is `google/embeddinggemma-300m` in `gwaihir/processing/embedding.py`.

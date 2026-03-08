@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import Any
@@ -122,3 +123,68 @@ class Chunker:
             Approximate token count.
         """
         return len(text.split())
+
+    def clear_chunks(self) -> int:
+        """Delete all chunk rows and return how many existed before deletion.
+
+        Returns:
+            Number of previously stored chunks.
+        """
+        with self.db.connect() as conn:
+            row = conn.execute('SELECT COUNT(*) FROM chunks;').fetchone()
+            existing = int(row[0]) if row is not None else 0
+            conn.execute('DELETE FROM chunks;')
+        return existing
+
+    def chunk_documents(self) -> tuple[int, int]:
+        """Chunk all ingested documents (wiki and text) and store chunk rows.
+
+        Returns:
+            Tuple of ``(processed_documents, inserted_chunks)``.
+        """
+        query = """
+        SELECT
+            d.document_id,
+            d.title,
+            d.url,
+            d.raw_content,
+            CASE
+                WHEN wp.document_id IS NOT NULL THEN 'html'
+                ELSE 'text'
+            END AS content_type
+        FROM document AS d
+        LEFT JOIN wiki_page AS wp ON wp.document_id = d.document_id
+        LEFT JOIN text AS t ON t.document_id = d.document_id
+        WHERE wp.document_id IS NOT NULL OR t.document_id IS NOT NULL
+        ORDER BY d.document_id;
+        """
+
+        with self.db.connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(query).fetchall()
+
+        processed_documents = 0
+        inserted_chunks = 0
+
+        for row in rows:
+            document_id = int(row['document_id'])
+            title = str(row['title'])
+            url = str(row['url']) if row['url'] is not None else None
+            content = str(row['raw_content']) if row['raw_content'] is not None else ''
+            content_type = ContentType(str(row['content_type']))
+
+            logger.info(f'Chunking document_id={document_id} title="{title}" content_type={content_type}')
+            if not content.strip():
+                logger.warning(f'Skipping empty document content for document_id={document_id}')
+                continue
+
+            inserted = self.chunk_document(
+                document_id=document_id,
+                content=content,
+                content_type=content_type,
+                metadata={'document_id': document_id, 'title': title, 'url': url},
+            )
+            inserted_chunks += inserted
+            processed_documents += 1
+
+        return processed_documents, inserted_chunks
