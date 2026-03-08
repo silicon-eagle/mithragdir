@@ -18,6 +18,14 @@ class TextClient:
         index_filename: str = 'index.csv',
         batch_size: int = 10,
     ) -> None:
+        """Initialize a local text ingestion client.
+
+        Args:
+            db: Database used for persistence.
+            source_folder: Folder containing index and source text files.
+            index_filename: CSV file name inside source_folder.
+            batch_size: Number of books buffered before flush.
+        """
         self.source_folder = Path(source_folder)
         self.index_path = self.source_folder / index_filename
         self.db = db
@@ -26,6 +34,11 @@ class TextClient:
         logger.info(f'Initialized TextClient(source_folder={self.source_folder}, index_path={self.index_path}, batch_size={self.batch_size})')
 
     def _iter_index_rows(self) -> list[dict[str, str]]:
+        """Read and normalize rows from the index CSV.
+
+        Returns:
+            Normalized index rows with blank-trimmed values.
+        """
         if not self.index_path.exists():
             logger.warning(f'Book index file does not exist: {self.index_path}')
             return []
@@ -43,6 +56,11 @@ class TextClient:
             return rows
 
     def _resolve_index_entries(self) -> list[tuple[Path, dict[str, str]]]:
+        """Resolve index rows into existing text file paths.
+
+        Returns:
+            Tuples of file path and row metadata for valid entries.
+        """
         rows = self._iter_index_rows()
         entries: list[tuple[Path, dict[str, str]]] = []
         missing_files = 0
@@ -70,12 +88,29 @@ class TextClient:
         return entries
 
     def _extract_text(self, file_path: Path) -> str:
+        """Extract plain text content from a supported file.
+
+        Args:
+            file_path: Text file path.
+
+        Returns:
+            Raw UTF-8 text content.
+        """
         suffix = file_path.suffix.lower()
         if suffix == '.txt':
             return file_path.read_text(encoding='utf-8')
         raise ValueError(f'Unsupported book format: {file_path.suffix}')
 
     def _build_book(self, file_path: Path, metadata: dict[str, str]) -> Text:
+        """Build a Text model from file content and index metadata.
+
+        Args:
+            file_path: Source file path.
+            metadata: CSV metadata row for this file.
+
+        Returns:
+            Text model ready for insertion.
+        """
         logger.debug(f'Extracting text from book file: {file_path}')
         content = self._extract_text(file_path)
         title = metadata.get('title') or file_path.stem.replace('_', ' ').strip()
@@ -100,6 +135,11 @@ class TextClient:
         )
 
     def store_book(self, book: Text) -> None:
+        """Buffer one book and flush when batch size is reached.
+
+        Args:
+            book: Book payload to buffer.
+        """
         self._pending_books.append(book)
         logger.debug(f'Buffered book {book.title} (pending={len(self._pending_books)}/{self.batch_size})')
         if len(self._pending_books) >= self.batch_size:
@@ -107,6 +147,11 @@ class TextClient:
             self.flush()
 
     def flush(self) -> int:
+        """Persist buffered books to the database.
+
+        Returns:
+            Number of books flushed.
+        """
         if not self._pending_books:
             logger.debug('Flush called with empty book buffer')
             return 0
@@ -121,6 +166,15 @@ class TextClient:
         return stored
 
     def ingest(self, limit: int | None = None, pause_seconds: float = 0.0) -> int:
+        """Ingest indexed text files into the database.
+
+        Args:
+            limit: Optional cap on number of indexed files.
+            pause_seconds: Delay between files.
+
+        Returns:
+            Number of records flushed in final flush call.
+        """
         entries = self._resolve_index_entries()
         if limit is not None:
             entries = entries[:limit]
@@ -161,5 +215,6 @@ class TextClient:
         return flushed
 
     def close(self) -> None:
+        """Flush pending books before shutdown."""
         logger.info('Closing TextClient and flushing pending books')
         self.flush()

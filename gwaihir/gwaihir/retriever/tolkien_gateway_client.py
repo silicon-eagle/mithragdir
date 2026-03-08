@@ -27,6 +27,14 @@ class TolkienGatewayClient:
         batch_size: int = 25,
         timeout_seconds: float = 30,
     ) -> None:
+        """Initialize API client state and buffering.
+
+        Args:
+            base_url: Tolkien Gateway base URL.
+            db: Database used for persistence.
+            batch_size: Number of pages buffered before flush.
+            timeout_seconds: Request timeout for API calls.
+        """
         self.base_url = base_url.rstrip('/')
         self.api_url = f'{self.base_url}/w/api.php'
         self.db = db
@@ -38,6 +46,14 @@ class TolkienGatewayClient:
         )
 
     def _request_json(self, params: dict[str, str]) -> dict:
+        """Execute a MediaWiki API request and return JSON payload.
+
+        Args:
+            params: Query string parameters for the API call.
+
+        Returns:
+            Parsed JSON payload.
+        """
         logger.debug(f'Requesting MediaWiki API: {self.api_url} params={params}')
         response = curl_requests.get(
             self.api_url,
@@ -53,6 +69,14 @@ class TolkienGatewayClient:
         return payload
 
     def _build_page_url(self, title: str) -> str:
+        """Build a canonical wiki URL for a page title.
+
+        Args:
+            title: Page title.
+
+        Returns:
+            URL-safe page URL.
+        """
         return f'{self.base_url}/wiki/{quote(title.replace(" ", "_"))}'
 
     def _fetch_index_payload_with_retry(
@@ -61,6 +85,16 @@ class TolkienGatewayClient:
         nr_attempts: int,
         retry_sleep_seconds: float,
     ) -> dict:
+        """Fetch one index payload with retry/backoff.
+
+        Args:
+            params: API query parameters.
+            nr_attempts: Number of retry attempts after first call.
+            retry_sleep_seconds: Delay between retries.
+
+        Returns:
+            Successful API payload.
+        """
         max_attempts = nr_attempts + 1
         payload: dict | None = None
         for attempt_number in range(1, max_attempts + 1):
@@ -83,6 +117,15 @@ class TolkienGatewayClient:
         return payload
 
     def _build_index_batch(self, allpages: list[dict[str, object]], remaining: int | None = None) -> list[Index]:
+        """Transform MediaWiki allpages entries into Index models.
+
+        Args:
+            allpages: Raw allpages items.
+            remaining: Optional remaining item count to include.
+
+        Returns:
+            Parsed index entries for this batch.
+        """
         batch_indexes: list[Index] = []
         for item in allpages:
             if remaining is not None and len(batch_indexes) >= remaining:
@@ -97,11 +140,24 @@ class TolkienGatewayClient:
         return batch_indexes
 
     def _store_index_batch(self, indexes: Sequence[Index]) -> None:
+        """Persist an index batch to the database.
+
+        Args:
+            indexes: Index rows to persist.
+        """
         if not indexes:
             return
         self.db.insert_indexes(indexes)
 
     def _extract_apcontinue(self, payload: dict) -> str | None:
+        """Extract continuation token from an index response.
+
+        Args:
+            payload: API payload that may contain continue block.
+
+        Returns:
+            Next apcontinue token or None.
+        """
         continue_payload = payload.get('continue')
         if isinstance(continue_payload, dict):
             apcontinue = continue_payload.get('apcontinue')
@@ -116,6 +172,18 @@ class TolkienGatewayClient:
         nr_attempts: int = 2,
         retry_sleep_seconds: float = 5.0,
     ) -> list[Index]:
+        """Fetch and store index entries from MediaWiki allpages.
+
+        Args:
+            limit: Optional max number of pages to fetch.
+            batch_size: Requested allpages batch size.
+            pause_seconds: Delay between index requests.
+            nr_attempts: Number of retries per request.
+            retry_sleep_seconds: Delay between retry attempts.
+
+        Returns:
+            Collected index entries.
+        """
         logger.info(f'Fetching page index with limit={limit}, batch_size={batch_size}, pause_seconds={pause_seconds}, nr_attempts={nr_attempts}')
         pages: list[Index] = []
         next_continue: str | None = None
@@ -160,6 +228,14 @@ class TolkienGatewayClient:
         return pages
 
     def get_page(self, title: str) -> Page:
+        """Fetch and parse one wiki page.
+
+        Args:
+            title: Page title to fetch.
+
+        Returns:
+            Parsed page model.
+        """
         logger.debug(f'Fetching page content for title={title}')
         payload = self._request_json(
             {
@@ -206,6 +282,11 @@ class TolkienGatewayClient:
         )
 
     def store_page(self, page: Page) -> None:
+        """Buffer one crawled page and flush at batch size.
+
+        Args:
+            page: Page payload to store.
+        """
         self._pending_pages.append(page)
         logger.debug(f'Buffered page {page.title} (pending={len(self._pending_pages)}/{self.batch_size})')
         if len(self._pending_pages) >= self.batch_size:
@@ -213,6 +294,11 @@ class TolkienGatewayClient:
             self.flush()
 
     def flush(self) -> int:
+        """Persist buffered pages to the database.
+
+        Returns:
+            Number of flushed pages.
+        """
         if not self._pending_pages:
             logger.debug('Flush called with empty page buffer')
             return 0
@@ -234,6 +320,18 @@ class TolkienGatewayClient:
         nr_attempts: int = 2,
         retry_sleep_seconds: float = 120.0,
     ) -> int:
+        """Crawl pages from an index and persist them with retries.
+
+        Args:
+            index: Optional pre-fetched index input.
+            limit: Optional limit used when index is fetched internally.
+            pause_seconds: Delay between page requests.
+            nr_attempts: Number of retries per page.
+            retry_sleep_seconds: Delay between page retries.
+
+        Returns:
+            Number of pages flushed during final cleanup flush.
+        """
         if nr_attempts < 0:
             raise ValueError('nr_attemps must be >= 0')
 
@@ -305,11 +403,20 @@ class TolkienGatewayClient:
         return flushed
 
     def store_pages(self, pages: Sequence[Page]) -> int:
+        """Store multiple pages through buffered insert flow.
+
+        Args:
+            pages: Sequence of pages to store.
+
+        Returns:
+            Number of pages flushed.
+        """
         logger.info(f'Storing {len(pages)} pages via buffered store_pages')
         for page in pages:
             self.store_page(page)
         return self.flush()
 
     def close(self) -> None:
+        """Flush pending pages before shutdown."""
         logger.info('Closing client and flushing pending pages')
         self.flush()

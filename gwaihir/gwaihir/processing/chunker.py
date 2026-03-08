@@ -23,6 +23,14 @@ class Chunker:
         chunk_overlap: int = 200,
         html_headers_to_split_on: Sequence[tuple[str, str]] | None = None,
     ) -> None:
+        """Configure text and HTML chunking strategies.
+
+        Args:
+            db: Database used to persist chunks.
+            chunk_size: Maximum chunk size for text splitter.
+            chunk_overlap: Number of overlapping characters between chunks.
+            html_headers_to_split_on: HTML headers used as split boundaries.
+        """
         self.db = db
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -48,6 +56,17 @@ class Chunker:
         content_type: ContentType = ContentType.TEXT,
         metadata: dict[str, Any] | None = None,
     ) -> int:
+        """Split a document into chunks and store them in the database.
+
+        Args:
+            document_id: Parent document id in the database.
+            content: Raw document body to split.
+            content_type: Content mode controlling splitter strategy.
+            metadata: Optional metadata copied into each chunk payload.
+
+        Returns:
+            Number of chunks inserted.
+        """
         base_metadata: dict[str, Any] = dict(metadata or {})
         base_metadata['content_type'] = content_type.value
 
@@ -94,4 +113,12 @@ class Chunker:
         return chunks_inserted
 
     def _token_count(self, text: str) -> int:
+        """Estimate token count using whitespace tokenization.
+
+        Args:
+            text: Chunk content.
+
+        Returns:
+            Approximate token count.
+        """
         return len(text.split())

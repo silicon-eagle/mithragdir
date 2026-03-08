@@ -12,6 +12,11 @@ from gwaihir.db.models import Chunk, Index, Page, Text
 
 class RedbookDatabase:
     def __init__(self, db_path: Path = Path('storage/redbook.db')) -> None:
+        """Create a database wrapper and ensure parent directory exists.
+
+        Args:
+            db_path: Path to the SQLite database file.
+        """
         self.db_path = db_path
         self.connection = None
         if not self.db_path.parent.exists():
@@ -19,6 +24,11 @@ class RedbookDatabase:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
+        """Open a transactional SQLite connection.
+
+        Yields:
+            Active SQLite connection with foreign keys enabled.
+        """
         connection = sqlite3.connect(self.db_path)
         connection.execute('PRAGMA foreign_keys = ON;')
         self.connection = connection
@@ -33,10 +43,24 @@ class RedbookDatabase:
             self.connection = None
 
     def execute(self, query: str, params: tuple = ()) -> None:
+        """Execute a single SQL statement in its own transaction.
+
+        Args:
+            query: SQL statement to execute.
+            params: Positional SQL parameters.
+        """
         with self.connect() as conn:
             conn.execute(query, params)
 
     def insert_index(self, index: Index) -> int:
+        """Insert one index entry if it does not already exist.
+
+        Args:
+            index: Page index metadata.
+
+        Returns:
+            Inserted row id or existing page id.
+        """
         exists_query = 'SELECT 1 FROM "index" WHERE page_id = ? OR url = ? LIMIT 1;'
         insert_query = """
         INSERT OR IGNORE INTO "index" (page_id, title, url)
@@ -53,6 +77,14 @@ class RedbookDatabase:
             return cursor.lastrowid
 
     def insert_indexes(self, indexes: Sequence[Index]) -> int:
+        """Insert a deduplicated batch of index entries.
+
+        Args:
+            indexes: Index entries to insert.
+
+        Returns:
+            Number of newly inserted rows.
+        """
         if not indexes:
             return 0
 
@@ -87,6 +119,14 @@ class RedbookDatabase:
         return len(rows)
 
     def insert_document(self, page: Page) -> int:
+        """Insert a wiki page into document and wiki_page tables.
+
+        Args:
+            page: Parsed page payload.
+
+        Returns:
+            Document id, or -1 on insert failure.
+        """
         insert_document_query = """
         INSERT INTO document (
             title,
@@ -135,6 +175,14 @@ class RedbookDatabase:
             return document_id
 
     def insert_text(self, text: Text) -> int:
+        """Insert a text source into document and text tables.
+
+        Args:
+            text: Text payload with metadata.
+
+        Returns:
+            Document id, or -1 on insert failure.
+        """
         insert_document_query = """
         INSERT INTO document (
             title,
@@ -188,6 +236,18 @@ class RedbookDatabase:
         token_count: int,
         meta_data: dict[str, Any] | None = None,
     ) -> int:
+        """Insert one chunk row.
+
+        Args:
+            document_id: Parent document id.
+            chunk_index: Sequential index inside document.
+            content: Chunk text.
+            token_count: Estimated token count.
+            meta_data: Optional chunk metadata.
+
+        Returns:
+            Inserted chunk id, or -1 on failure.
+        """
         insert_query = """
         INSERT INTO chunks (document_id, chunk_index, content, token_count, meta_data)
         VALUES (?, ?, ?, ?, ?);
@@ -201,6 +261,14 @@ class RedbookDatabase:
             return cursor.lastrowid
 
     def get_chunks(self, document_id: int | None = None) -> list[Chunk]:
+        """Load chunks, optionally filtered by document id.
+
+        Args:
+            document_id: Optional document id filter.
+
+        Returns:
+            Parsed chunk models.
+        """
         base_query = 'SELECT id, document_id, chunk_index, content, token_count, meta_data, created_at FROM chunks'
         params: tuple[Any, ...] = ()
         if document_id is None:
@@ -229,6 +297,11 @@ class RedbookDatabase:
         return chunks
 
     def document_count(self) -> int:
+        """Return total number of documents.
+
+        Returns:
+            Number of rows in document table.
+        """
         query = 'SELECT COUNT(*) FROM document;'
         with self.connect() as conn:
             row = conn.execute(query).fetchone()
@@ -237,18 +310,42 @@ class RedbookDatabase:
             return int(row[0])
 
     def document_exists(self, title: str) -> bool:
+        """Check whether a document title already exists.
+
+        Args:
+            title: Document title to query.
+
+        Returns:
+            True when a matching document exists.
+        """
         query = 'SELECT 1 FROM document WHERE title = ? LIMIT 1;'
         with self.connect() as conn:
             row = conn.execute(query, (title,)).fetchone()
             return row is not None
 
     def text_exists(self, source_path: str) -> bool:
+        """Check whether a text source path already exists.
+
+        Args:
+            source_path: Absolute or canonical source path.
+
+        Returns:
+            True when a matching text row exists.
+        """
         query = 'SELECT 1 FROM text WHERE source_path = ? LIMIT 1;'
         with self.connect() as conn:
             row = conn.execute(query, (source_path,)).fetchone()
             return row is not None
 
     def _parse_meta_data(self, raw_meta_data: str | None) -> dict[str, object]:
+        """Parse chunk metadata JSON safely.
+
+        Args:
+            raw_meta_data: Serialized metadata JSON or None.
+
+        Returns:
+            Metadata dictionary, or empty dict when invalid.
+        """
         if not raw_meta_data:
             return {}
 
@@ -265,6 +362,7 @@ class RedbookDatabase:
         return {}
 
     def _create_index_table(self) -> None:
+        """Create the index table if needed."""
         create_table_query = """
         CREATE TABLE IF NOT EXISTS "index" (
             page_id INTEGER PRIMARY KEY,
@@ -275,6 +373,7 @@ class RedbookDatabase:
         self.execute(create_table_query)
 
     def _create_document_table(self) -> None:
+        """Create the document table if needed."""
         create_table_query = """
         CREATE TABLE IF NOT EXISTS document (
             document_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,6 +386,7 @@ class RedbookDatabase:
         self.execute(create_table_query)
 
     def _create_wiki_page_table(self) -> None:
+        """Create the wiki_page table if needed."""
         create_table_query = """
         CREATE TABLE IF NOT EXISTS wiki_page (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -307,6 +407,15 @@ class RedbookDatabase:
         self.execute(create_table_query)
 
     def _table_exists(self, conn: sqlite3.Connection, table_name: str) -> bool:
+        """Check whether a table exists in sqlite_master.
+
+        Args:
+            conn: Open sqlite connection.
+            table_name: Name of table to check.
+
+        Returns:
+            True when table exists.
+        """
         row = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1;",
             (table_name,),
@@ -314,6 +423,7 @@ class RedbookDatabase:
         return row is not None
 
     def _create_text_table(self) -> None:
+        """Create text table, migrating legacy book table name when needed."""
         with self.connect() as conn:
             if self._table_exists(conn, 'book') and not self._table_exists(conn, 'text'):
                 conn.execute('ALTER TABLE book RENAME TO text;')
@@ -337,6 +447,7 @@ class RedbookDatabase:
             conn.execute(create_table_query)
 
     def _create_chunks_table(self) -> None:
+        """Create chunks table and ensure metadata column exists."""
         create_table_query = """
         CREATE TABLE IF NOT EXISTS chunks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -356,6 +467,7 @@ class RedbookDatabase:
                 conn.execute("ALTER TABLE chunks ADD COLUMN meta_data TEXT NOT NULL DEFAULT '{}';")
 
     def deploy(self) -> None:
+        """Create and migrate all required database tables."""
         self._create_index_table()
         self._create_document_table()
         self._create_wiki_page_table()
@@ -363,6 +475,7 @@ class RedbookDatabase:
         self._create_chunks_table()
 
     def close(self) -> None:
+        """Close the currently tracked connection, if any."""
         if self.connection is not None:
             self.connection.close()
             self.connection = None
