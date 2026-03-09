@@ -44,13 +44,12 @@ class Chunk(BaseModel):
     meta_data: dict[str, object]
     created_at: str | None = None
 
-    def build_payload(self) -> dict[str, object]:
+    def build_metadata_payload(self) -> dict[str, object]:
         """Build the Qdrant payload for one chunk."""
         return {
             'chunk_id': self.id,
             'document_id': self.document_id,
             'chunk_index': self.chunk_index,
-            'content': self.content,
             'token_count': self.token_count,
             'created_at': self.created_at,
             'meta_data': self.meta_data,

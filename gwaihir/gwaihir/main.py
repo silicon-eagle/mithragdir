@@ -53,7 +53,7 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
     '--step',
     'steps',
     multiple=True,
-    type=click.Choice(['read-data', 'chunk', 'encode'], case_sensitive=False),
+    type=click.Choice(['read-data', 'chunk', 'encode', 'clear-chunks', 'clear-embeddings'], case_sensitive=False),
     help='Pipeline stage(s) to run. If omitted, all stages run in order.',
 )
 @click.option('--db-path', type=click.Path(path_type=Path), default=DEFAULT_DB_PATH, show_default=True)
@@ -81,6 +81,12 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
 @click.option('--clear-existing-chunks/--no-clear-existing-chunks', default=True, show_default=True)
 @click.option('--encode-document-id', type=int, default=None, help='Optional document_id filter when encoding chunks.')
 @click.option('--encode-batch-size', default=32, type=int, show_default=True)
+@click.option(
+    '--clear-existing-vectors/--no-clear-existing-vectors',
+    default=True,
+    show_default=True,
+    help='Delete and recreate the Qdrant collection before encoding.',
+)
 @click.option('--qdrant-url', default=None, help='Qdrant URL. If omitted, QDRANT_URL env var is used.')
 @click.option('--qdrant-api-key', default=None, help='Optional Qdrant API key. If omitted, QDRANT_API_KEY env var is used.')
 @click.option('--qdrant-collection-name', default='gwaihir_chunks', show_default=True)
@@ -116,6 +122,7 @@ def cli(
     clear_existing_chunks: bool,
     encode_document_id: int | None,
     encode_batch_size: int,
+    clear_existing_vectors: bool,
     qdrant_url: str | None,
     qdrant_api_key: str | None,
     qdrant_collection_name: str,
@@ -136,6 +143,25 @@ def cli(
     db.deploy()
 
     try:
+        if 'clear-chunks' in selected_steps:
+            chunker = Chunker(db=db, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+            removed = chunker.clear_chunks()
+            logger.info(f'Removed {removed} existing chunks')
+
+        if 'clear-embeddings' in selected_steps:
+            embedder = ChunkEmbedder(
+                db=db,
+                dense_model_name=dense_model_name,
+                dense_vector_name=dense_vector_name,
+                sparse_model_name=sparse_model_name,
+                sparse_vector_name=sparse_vector_name,
+                collection_name=qdrant_collection_name,
+                qdrant_url=qdrant_url,
+                qdrant_api_key=qdrant_api_key,
+            )
+            embedder.reset_collection()
+            logger.info(f'Cleared embeddings in qdrant collection {qdrant_collection_name}')
+
         if 'read-data' in selected_steps:
             wiki_client = TolkienGatewayClient(
                 base_url=wiki_base_url,
@@ -189,6 +215,8 @@ def cli(
                 qdrant_url=qdrant_url,
                 qdrant_api_key=qdrant_api_key,
             )
+            if clear_existing_vectors:
+                embedder.reset_collection()
             upserted = embedder.encode_and_upsert_hybrid_chunks(
                 document_id=encode_document_id,
                 batch_size=encode_batch_size,

@@ -13,6 +13,7 @@ from qdrant_client.models import Distance, PointStruct, SparseVector, SparseVect
 from sentence_transformers import SentenceTransformer
 
 from gwaihir.db.db import RedbookDatabase
+from gwaihir.db.models import Chunk
 
 DEFAULT_DENSE_MODEL = 'google/embeddinggemma-300m'
 DEFAULT_SPARSE_MODEL = 'Qdrant/bm25'
@@ -153,6 +154,20 @@ class ChunkEmbedder:
         )
         return
 
+    def reset_collection(self) -> None:
+        """Delete and recreate the configured Qdrant collection."""
+        collection_name = self.collection_name
+        try:
+            self.qdrant_client.delete_collection(collection_name=collection_name)
+            logger.info(f'Deleted existing collection: {collection_name}')
+        except UnexpectedResponse as exc:
+            if exc.status_code != 404:
+                msg = f'Error deleting collection {collection_name}: {exc}'
+                logger.error(msg)
+                raise RuntimeError(msg) from exc
+
+        self.create_collection()
+
     def encode_and_upsert_hybrid_chunks(
         self,
         document_id: int | None = None,
@@ -181,7 +196,7 @@ class ChunkEmbedder:
 
         items = list(chunks_by_document.items())
 
-        def upsert_document(document_chunks: Sequence, /) -> int:
+        def upsert_document(document_chunks: Sequence[Chunk]) -> int:
             dense_vectors = self.encode_texts_dense(
                 texts=[chunk.content for chunk in document_chunks],
                 batch_size=batch_size,
@@ -198,12 +213,15 @@ class ChunkEmbedder:
                         self.dense_vector_name: dense_vector,
                         self.sparse_vector_name: sparse_vector,
                     },
-                    payload=chunk.build_payload(),
+                    payload=chunk.build_metadata_payload(),
                 )
                 for chunk, dense_vector, sparse_vector in zip(document_chunks, dense_vectors, sparse_vectors, strict=True)
             ]
 
-            self.qdrant_client.upsert(collection_name=self.collection_name, points=points)
+            # Avoid exceeding Qdrant request-size limits by upserting in slices.
+            for start in range(0, len(points), batch_size):
+                point_batch = points[start : start + batch_size]
+                self.qdrant_client.upsert(collection_name=self.collection_name, points=point_batch)
             return len(points)
 
         if show_progress:

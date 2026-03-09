@@ -21,7 +21,7 @@ class Chunker:
     def __init__(
         self,
         db: RedbookDatabase,
-        chunk_size: int = 1_000,
+        chunk_size: int = 1000,
         chunk_overlap: int = 200,
         html_headers_to_split_on: Sequence[tuple[str, str]] | None = None,
     ) -> None:
@@ -42,6 +42,9 @@ class Chunker:
                 ('h1', 'Header 1'),
                 ('h2', 'Header 2'),
                 ('h3', 'Header 3'),
+                ('h4', 'Header 4'),
+                ('h5', 'Header 5'),
+                ('h6', 'Header 6'),
             ]
         )
         self._text_splitter = RecursiveCharacterTextSplitter(
@@ -73,8 +76,20 @@ class Chunker:
         base_metadata['content_type'] = content_type.value
 
         if content_type == ContentType.HTML:
-            documents = self._html_splitter.split_text(content)
-            chunk_method = 'html_header_splitter'
+            header_documents = self._html_splitter.split_text(content)
+            documents = []
+            for header_document in header_documents:
+                section_text = header_document.page_content.strip()
+                if not section_text:
+                    continue
+
+                section_metadata: dict[str, Any] = {
+                    **base_metadata,
+                    **header_document.metadata,
+                }
+                documents.extend(self._text_splitter.create_documents([section_text], metadatas=[section_metadata]))
+
+            chunk_method = 'html_header_recursive_character'
         else:
             documents = self._text_splitter.create_documents([content], metadatas=[base_metadata])
             chunk_method = 'recursive_character'
@@ -192,6 +207,7 @@ class Chunker:
             inserted_chunks += inserted
             processed_documents += 1
 
+        logger.info(f'Starting chunking of {len(rows)} documents.')
         if show_progress:
             with click.progressbar(rows, label='Chunking documents', show_pos=True) as progress_rows:
                 for row in progress_rows:
