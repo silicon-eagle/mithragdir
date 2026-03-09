@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from sys import stderr
 
 import click
+from dotenv import load_dotenv
 from loguru import logger
 
 from gwaihir.db.db import RedbookDatabase
@@ -45,7 +45,6 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
     log_file = log_dir / f'{datetime.now().strftime("%Y-%m-%d")}_logfile.log'
 
     logger.remove()
-    logger.add(stderr, format=fmt or _default_logger_format(), level=level, colorize=True)
     logger.add(log_file, rotation='10 MB', level=level, format=fmt or _default_logger_format(), enqueue=True, backtrace=True, diagnose=True)
 
 
@@ -58,7 +57,7 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
     help='Pipeline stage(s) to run. If omitted, all stages run in order.',
 )
 @click.option('--db-path', type=click.Path(path_type=Path), default=DEFAULT_DB_PATH, show_default=True)
-@click.option('--log-level', default='DEBUG', show_default=True)
+@click.option('--log-level', default='INFO', show_default=True)
 @click.option('--log-dir', type=click.Path(path_type=Path), default=DEFAULT_LOG_DIR, show_default=True)
 @click.option('--wiki-base-url', default=DEFAULT_WIKI_BASE_URL, show_default=True)
 @click.option('--wiki-client-batch-size', default=DEFAULT_WIKI_CLIENT_BATCH_SIZE, type=int, show_default=True)
@@ -89,6 +88,7 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
 @click.option('--sparse-model-name', default='Qdrant/bm25', show_default=True)
 @click.option('--dense-vector-name', default='dense', show_default=True)
 @click.option('--sparse-vector-name', default='sparse', show_default=True)
+@click.option('--progress/--no-progress', default=True, show_default=True, help='Show progress bars for chunking and encoding stages.')
 def cli(
     steps: tuple[str, ...],
     db_path: Path,
@@ -123,8 +123,10 @@ def cli(
     sparse_model_name: str,
     dense_vector_name: str,
     sparse_vector_name: str,
+    progress: bool,
 ) -> None:
     """Run data ingestion, chunking, and embedding pipeline stages."""
+    load_dotenv(dotenv_path=PROJECT_ROOT / '.env')
     _setup_logger(level=log_level, log_dir=log_dir)
 
     selected_steps = [step.lower() for step in steps] if steps else ['read-data', 'chunk', 'encode']
@@ -172,7 +174,7 @@ def cli(
             if clear_existing_chunks:
                 removed = chunker.clear_chunks()
                 logger.info(f'Removed {removed} existing chunks')
-            processed_documents, inserted_chunks = chunker.chunk_documents()
+            processed_documents, inserted_chunks = chunker.chunk_documents(show_progress=progress)
             logger.info(f'Processed {processed_documents} documents')
             logger.info(f'Inserted {inserted_chunks} chunks')
 
@@ -190,6 +192,7 @@ def cli(
             upserted = embedder.encode_and_upsert_hybrid_chunks(
                 document_id=encode_document_id,
                 batch_size=encode_batch_size,
+                show_progress=progress,
             )
             logger.info(f'Upserted {upserted} chunk vectors to qdrant collection {qdrant_collection_name}')
     finally:

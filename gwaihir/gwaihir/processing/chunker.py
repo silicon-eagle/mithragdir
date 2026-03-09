@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from enum import StrEnum
 from typing import Any
 
+import click
 from langchain_text_splitters import HTMLHeaderTextSplitter, RecursiveCharacterTextSplitter
 from loguru import logger
 
@@ -104,7 +105,7 @@ class Chunker:
             chunk_lengths.append(chunk_length)
             logger.debug(f'Created chunk document_id={document_id} chunk_index={chunk_index} length={chunk_length} chars token_count={token_count}')
 
-        logger.info(
+        logger.debug(
             f'Chunking completed document_id={document_id} '
             f'content_type={content_type} '
             f'chunks_created={chunks_inserted} '
@@ -136,8 +137,11 @@ class Chunker:
             conn.execute('DELETE FROM chunks;')
         return existing
 
-    def chunk_documents(self) -> tuple[int, int]:
+    def chunk_documents(self, show_progress: bool = True) -> tuple[int, int]:
         """Chunk all ingested documents (wiki and text) and store chunk rows.
+
+        Args:
+            show_progress: Whether to render a terminal progress bar.
 
         Returns:
             Tuple of ``(processed_documents, inserted_chunks)``.
@@ -166,17 +170,18 @@ class Chunker:
         processed_documents = 0
         inserted_chunks = 0
 
-        for row in rows:
+        def process_row(row: sqlite3.Row) -> None:
+            nonlocal processed_documents, inserted_chunks
             document_id = int(row['document_id'])
             title = str(row['title'])
             url = str(row['url']) if row['url'] is not None else None
             content = str(row['raw_content']) if row['raw_content'] is not None else ''
             content_type = ContentType(str(row['content_type']))
 
-            logger.info(f'Chunking document_id={document_id} title="{title}" content_type={content_type}')
+            logger.debug(f'Chunking document_id={document_id} title="{title}" content_type={content_type}')
             if not content.strip():
                 logger.warning(f'Skipping empty document content for document_id={document_id}')
-                continue
+                return
 
             inserted = self.chunk_document(
                 document_id=document_id,
@@ -186,5 +191,15 @@ class Chunker:
             )
             inserted_chunks += inserted
             processed_documents += 1
+
+        if show_progress:
+            with click.progressbar(rows, label='Chunking documents', show_pos=True) as progress_rows:
+                for row in progress_rows:
+                    process_row(row)
+        else:
+            for row in rows:
+                process_row(row)
+
+        logger.info(f'Chunking finished: processed_documents={processed_documents}, inserted_chunks={inserted_chunks}')
 
         return processed_documents, inserted_chunks

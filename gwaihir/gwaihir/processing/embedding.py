@@ -4,6 +4,7 @@ import os
 from collections.abc import Sequence
 from itertools import groupby
 
+import click
 from fastembed import SparseTextEmbedding
 from loguru import logger
 from qdrant_client import QdrantClient, models
@@ -156,8 +157,15 @@ class ChunkEmbedder:
         self,
         document_id: int | None = None,
         batch_size: int = 32,
+        show_progress: bool = True,
     ) -> int:
-        """Read DB chunks, encode dense+sparse vectors, and upsert hybrid points."""
+        """Read DB chunks, encode dense+sparse vectors, and upsert hybrid points.
+
+        Args:
+            document_id: Optional document id filter.
+            batch_size: Embedding batch size.
+            show_progress: Whether to render a terminal progress bar.
+        """
         chunks = self.db.get_chunks(document_id=document_id)
         scope = f'document_id={document_id}' if document_id is not None else 'all documents'
         logger.info(f'Encoding and upserting {len(chunks)} chunks for {scope}')
@@ -171,8 +179,9 @@ class ChunkEmbedder:
         upserted_total = 0
         self.create_collection()
 
-        for index, (current_document_id, document_chunks) in enumerate(chunks_by_document.items(), start=1):
-            logger.info(f'Encoding document {index}/{total_documents}: document_id={current_document_id} with {len(document_chunks)} chunks')
+        items = list(chunks_by_document.items())
+
+        def upsert_document(document_chunks: Sequence, /) -> int:
             dense_vectors = self.encode_texts_dense(
                 texts=[chunk.content for chunk in document_chunks],
                 batch_size=batch_size,
@@ -195,11 +204,15 @@ class ChunkEmbedder:
             ]
 
             self.qdrant_client.upsert(collection_name=self.collection_name, points=points)
-            upserted_total += len(points)
-            logger.info(
-                f'Upserted document {index}/{total_documents}: {len(points)} hybrid vectors '
-                f'for document_id={current_document_id} to {self.collection_name}'
-            )
+            return len(points)
 
-        logger.info(f'Upserted {upserted_total} hybrid vectors to {self.collection_name}')
+        if show_progress:
+            with click.progressbar(items, label='Encoding documents', show_pos=True) as progress_documents:
+                for _current_document_id, document_chunks in progress_documents:
+                    upserted_total += upsert_document(document_chunks)
+        else:
+            for _current_document_id, document_chunks in items:
+                upserted_total += upsert_document(document_chunks)
+
+        logger.info(f'Encoding finished: upserted_hybrid_vectors={upserted_total}, documents={total_documents}, collection={self.collection_name}')
         return upserted_total

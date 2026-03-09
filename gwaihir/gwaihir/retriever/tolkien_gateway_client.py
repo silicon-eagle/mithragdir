@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import time
 from collections.abc import Sequence
 from urllib.parse import quote
@@ -26,6 +27,8 @@ class TolkienGatewayClient:
         db: RedbookDatabase,
         batch_size: int = 25,
         timeout_seconds: float = 30,
+        pause_seconds: float = 1.0,
+        jitter_pause: bool = True,
     ) -> None:
         """Initialize API client state and buffering.
 
@@ -34,16 +37,40 @@ class TolkienGatewayClient:
             db: Database used for persistence.
             batch_size: Number of pages buffered before flush.
             timeout_seconds: Request timeout for API calls.
+            pause_seconds: Base pause duration between API calls.
+            jitter_pause: Whether to apply random jitter to pause durations.
         """
         self.base_url = base_url.rstrip('/')
         self.api_url = f'{self.base_url}/w/api.php'
         self.db = db
         self.batch_size = batch_size
         self.timeout_seconds = timeout_seconds
+        self.pause_seconds = pause_seconds
+        self.jitter_pause = jitter_pause
         self._pending_pages: list[Page] = []
         logger.info(
-            f'Initialized TolkienGatewayClient(base_url={self.base_url}, batch_size={self.batch_size}, timeout_seconds={self.timeout_seconds})'
+            f'Initialized TolkienGatewayClient('
+            f'base_url={self.base_url}, '
+            f'batch_size={self.batch_size}, '
+            f'timeout_seconds={self.timeout_seconds}, '
+            f'pause_seconds={self.pause_seconds}, '
+            f'jitter_pause={self.jitter_pause}'
+            f')'
         )
+
+    def _sleep_with_pause_jitter(self, pause_seconds: float | None = None, apply_jitter: bool = True) -> None:
+        """Sleep with optional jitter based on configured pacing.
+
+        Args:
+            pause_seconds: Base pause duration. If None, uses ``self.pause_seconds``.
+            apply_jitter: Whether jitter should be applied to this sleep call.
+        """
+        base_pause = self.pause_seconds if pause_seconds is None else pause_seconds
+        if base_pause <= 0:
+            return
+
+        jitter = random.uniform(0.0, 1.5) if self.jitter_pause and apply_jitter else 0.0
+        time.sleep(base_pause + jitter)
 
     def _request_json(self, params: dict[str, str]) -> dict:
         """Execute a MediaWiki API request and return JSON payload.
@@ -110,7 +137,7 @@ class TolkienGatewayClient:
                     f'Error while fetching index batch (attempt {attempt_number}/{max_attempts}): {exc}. '
                     f'Pausing for {retry_sleep_seconds} seconds before retrying.'
                 )
-                time.sleep(retry_sleep_seconds)
+                self._sleep_with_pause_jitter(retry_sleep_seconds, apply_jitter=False)
 
         if payload is None:
             raise RuntimeError('Index payload is unexpectedly None after retries')
@@ -168,7 +195,7 @@ class TolkienGatewayClient:
         self,
         limit: int | None = None,
         batch_size: int = 100,
-        pause_seconds: float = 1.0,
+        pause_seconds: float | None = None,
         nr_attempts: int = 2,
         retry_sleep_seconds: float = 5.0,
     ) -> list[Index]:
@@ -191,7 +218,7 @@ class TolkienGatewayClient:
         loop_counter = 0
         while True:
             loop_counter += 1
-            time.sleep(pause_seconds)
+            self._sleep_with_pause_jitter(pause_seconds)
             remaining = None if limit is None else limit - len(pages)
             if remaining is not None and remaining <= 0:
                 break
@@ -316,7 +343,7 @@ class TolkienGatewayClient:
         self,
         index: Index | list[Index] | None = None,
         limit: int | None = None,
-        pause_seconds: float = 2.0,
+        pause_seconds: float | None = None,
         nr_attempts: int = 2,
         retry_sleep_seconds: float = 120.0,
     ) -> int:
@@ -388,7 +415,7 @@ class TolkienGatewayClient:
                             f'Error while crawling {title} (attempt {attempt_number}/{max_attempts}): {exc}. '
                             f'Pausing for {retry_sleep_seconds} seconds before retrying.'
                         )
-                        time.sleep(retry_sleep_seconds)
+                        self._sleep_with_pause_jitter(retry_sleep_seconds, apply_jitter=False)
 
                 if not stored:
                     logger.debug(f'Skipping page {title} after retry exhaustion')
@@ -400,7 +427,7 @@ class TolkienGatewayClient:
                 logger.info(f'Crawl progress: {processed_count}/{total_pages} (stored={stored_count}, failed={failed_count})')
 
                 # Polite pause between pages.
-                time.sleep(pause_seconds)
+                self._sleep_with_pause_jitter(pause_seconds)
         finally:
             # Always flush buffered pages, even on interruption/error.
             flushed = self.flush()
