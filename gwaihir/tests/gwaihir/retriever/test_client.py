@@ -27,6 +27,13 @@ def client(db: RedbookDatabase) -> TolkienGatewayClient:
 
 
 class TestTolkienGatewayClient:
+    def test_client_sets_user_agent_header(self, client: TolkienGatewayClient) -> None:
+        user_agent = client._session.headers.get('User-Agent')
+        assert isinstance(user_agent, str)
+        assert user_agent.startswith('gwaihir-bot/')
+        assert 'https://github.com/silicon-eagle/' in user_agent
+        assert 'silicon.eagle@pm.me' in user_agent
+
     def test_get_index_with_small_limit(self, client: TolkienGatewayClient) -> None:
         pages = client.get_index(limit=2)
         assert len(pages) == 2

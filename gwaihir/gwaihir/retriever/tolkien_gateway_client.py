@@ -11,6 +11,8 @@ from loguru import logger
 from gwaihir.db.db import RedbookDatabase
 from gwaihir.db.models import Index, Page
 
+DEFAULT_USER_AGENT = 'gwaihir-bot/1.0 (+https://github.com/silicon-eagle/; mailto:silicon.eagle@pm.me)'
+
 
 class TolkienGatewayClient:
     """Client for crawling pages from the Tolkien Gateway MediaWiki API.
@@ -29,6 +31,7 @@ class TolkienGatewayClient:
         timeout_seconds: float = 30,
         pause_seconds: float = 1.0,
         jitter_pause: bool = True,
+        user_agent: str = DEFAULT_USER_AGENT,
     ) -> None:
         """Initialize API client state and buffering.
 
@@ -39,6 +42,7 @@ class TolkienGatewayClient:
             timeout_seconds: Request timeout for API calls.
             pause_seconds: Base pause duration between API calls.
             jitter_pause: Whether to apply random jitter to pause durations.
+            user_agent: User-Agent sent on all MediaWiki API requests.
         """
         self.base_url = base_url.rstrip('/')
         self.api_url = f'{self.base_url}/w/api.php'
@@ -47,6 +51,9 @@ class TolkienGatewayClient:
         self.timeout_seconds = timeout_seconds
         self.pause_seconds = pause_seconds
         self.jitter_pause = jitter_pause
+        self.user_agent = user_agent
+        self._session = curl_requests.Session(impersonate='chrome')
+        self._session.headers.update({'User-Agent': self.user_agent})
         self._pending_pages: list[Page] = []
         logger.info(
             f'Initialized TolkienGatewayClient('
@@ -54,7 +61,8 @@ class TolkienGatewayClient:
             f'batch_size={self.batch_size}, '
             f'timeout_seconds={self.timeout_seconds}, '
             f'pause_seconds={self.pause_seconds}, '
-            f'jitter_pause={self.jitter_pause}'
+            f'jitter_pause={self.jitter_pause}, '
+            f'user_agent={self.user_agent}'
             f')'
         )
 
@@ -82,10 +90,9 @@ class TolkienGatewayClient:
             Parsed JSON payload.
         """
         logger.debug(f'Requesting MediaWiki API: {self.api_url} params={params}')
-        response = curl_requests.get(
+        response = self._session.get(
             self.api_url,
             params=params,
-            impersonate='chrome',
             timeout=self.timeout_seconds,
         )
         response.raise_for_status()
@@ -453,3 +460,6 @@ class TolkienGatewayClient:
         """Flush pending pages before shutdown."""
         logger.info('Closing client and flushing pending pages')
         self.flush()
+        close_session = getattr(self._session, 'close', None)
+        if callable(close_session):
+            close_session()
