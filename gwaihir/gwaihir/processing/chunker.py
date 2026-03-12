@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import re
 import sqlite3
-from collections.abc import Sequence
 from enum import StrEnum
 from typing import Any
 
 import click
-from langchain_text_splitters import HTMLHeaderTextSplitter, RecursiveCharacterTextSplitter
+from bs4 import BeautifulSoup
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from loguru import logger
+from markdownify import markdownify as md
 
 from gwaihir.db.db import RedbookDatabase
 
@@ -17,13 +19,44 @@ class ContentType(StrEnum):
     HTML = 'html'
 
 
+def clean_wiki_html_for_chunking(html_content: str) -> str:
+    """Strip Tolkien Gateway wiki noise and return markdown-ready text for chunking."""
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    main_content = soup.find(id='mw-content-text')
+    if not main_content:
+        main_content = soup
+
+    noise_selectors = [
+        '.mw-editsection',
+        '.reference',
+        '.toc',
+        '.navbox',
+        '.infobox',
+        '.mbox-small',
+        '.gallery',
+        '.printfooter',
+    ]
+
+    for selector in noise_selectors:
+        for element in main_content.select(selector):
+            element.decompose()
+
+    for tag in main_content(['script', 'style']):
+        tag.decompose()
+
+    clean_html = str(main_content)
+    markdown_text = md(clean_html, heading_style='ATX', strip=['img']).strip()
+    markdown_text = re.sub(r'\n{3,}', '\n\n', markdown_text)
+    return markdown_text
+
+
 class Chunker:
     def __init__(
         self,
         db: RedbookDatabase,
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
-        html_headers_to_split_on: Sequence[tuple[str, str]] | None = None,
     ) -> None:
         """Configure text and HTML chunking strategies.
 
@@ -31,28 +64,15 @@ class Chunker:
             db: Database used to persist chunks.
             chunk_size: Maximum chunk size for text splitter.
             chunk_overlap: Number of overlapping characters between chunks.
-            html_headers_to_split_on: HTML headers used as split boundaries.
         """
         self.db = db
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.html_headers_to_split_on = list(
-            html_headers_to_split_on
-            or [
-                ('h1', 'Header 1'),
-                ('h2', 'Header 2'),
-                ('h3', 'Header 3'),
-                ('h4', 'Header 4'),
-                ('h5', 'Header 5'),
-                ('h6', 'Header 6'),
-            ]
-        )
         self._text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
             add_start_index=True,
         )
-        self._html_splitter = HTMLHeaderTextSplitter(headers_to_split_on=self.html_headers_to_split_on)
 
     def chunk_document(
         self,
@@ -76,20 +96,9 @@ class Chunker:
         base_metadata['content_type'] = content_type.value
 
         if content_type == ContentType.HTML:
-            header_documents = self._html_splitter.split_text(content)
-            documents = []
-            for header_document in header_documents:
-                section_text = header_document.page_content.strip()
-                if not section_text:
-                    continue
-
-                section_metadata: dict[str, Any] = {
-                    **base_metadata,
-                    **header_document.metadata,
-                }
-                documents.extend(self._text_splitter.create_documents([section_text], metadatas=[section_metadata]))
-
-            chunk_method = 'html_header_recursive_character'
+            cleaned_content = clean_wiki_html_for_chunking(content)
+            documents = self._text_splitter.create_documents([cleaned_content], metadatas=[base_metadata])
+            chunk_method = 'html_cleaned_recursive_character'
         else:
             documents = self._text_splitter.create_documents([content], metadatas=[base_metadata])
             chunk_method = 'recursive_character'

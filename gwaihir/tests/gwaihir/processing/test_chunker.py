@@ -91,15 +91,17 @@ class TestChunker:
         assert len(rows) == inserted
         first_meta = json.loads(str(rows[0][2]))
         assert first_meta['content_type'] == 'html'
-        assert first_meta['chunk_method'] == 'html_header_recursive_character'
+        assert first_meta['chunk_method'] == 'html_cleaned_recursive_character'
         assert first_meta['source'] == 'wiki'
         assert int(rows[0][1]) > 0
+        assert rows[0][0].startswith('# Valinor')
+        assert '<h1>' not in rows[0][0]
 
         chunks = db.get_chunks(document_id=document_id)
         assert len(chunks) == inserted
         assert all(isinstance(chunk, Chunk) for chunk in chunks)
         assert chunks[0].meta_data['content_type'] == 'html'
-        assert chunks[0].meta_data['chunk_method'] == 'html_header_recursive_character'
+        assert chunks[0].meta_data['chunk_method'] == 'html_cleaned_recursive_character'
         assert chunks[0].meta_data['source'] == 'wiki'
         assert isinstance(chunks[0].meta_data, dict)
 

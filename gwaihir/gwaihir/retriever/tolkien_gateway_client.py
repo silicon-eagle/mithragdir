@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from urllib.parse import quote
 
+import click
 from curl_cffi import requests as curl_requests
 from loguru import logger
 
@@ -205,6 +206,7 @@ class TolkienGatewayClient:
         pause_seconds: float | None = None,
         nr_attempts: int = 2,
         retry_sleep_seconds: float = 5.0,
+        show_progress: bool = True,
     ) -> list[Index]:
         """Fetch and store index entries from MediaWiki allpages.
 
@@ -214,6 +216,7 @@ class TolkienGatewayClient:
             pause_seconds: Delay between index requests.
             nr_attempts: Number of retries per request.
             retry_sleep_seconds: Delay between retry attempts.
+            show_progress: Whether to render progress output in the terminal.
 
         Returns:
             Collected index entries.
@@ -221,42 +224,68 @@ class TolkienGatewayClient:
         logger.info(f'Fetching page index with limit={limit}, batch_size={batch_size}, pause_seconds={pause_seconds}, nr_attempts={nr_attempts}')
         pages: list[Index] = []
         next_continue: str | None = None
+        spinner_frames = ('|', '/', '-', '\\')
+        spinner_step = 0
 
-        loop_counter = 0
-        while True:
-            loop_counter += 1
-            self._sleep_with_pause_jitter(pause_seconds)
-            remaining = None if limit is None else limit - len(pages)
-            if remaining is not None and remaining <= 0:
-                break
-            batch_size = min(batch_size, remaining, 500) if remaining is not None else min(batch_size, 500)
-
-            logger.info(f'loop {loop_counter}: Fetching index batch with batch_size={batch_size}.')
-            params: dict[str, str] = {
-                'action': 'query',
-                'format': 'json',
-                'list': 'allpages',
-                'aplimit': str(batch_size),
-                **({'apcontinue': next_continue} if next_continue else {}),
-            }
-
-            payload = self._fetch_index_payload_with_retry(
-                params=params,
-                nr_attempts=nr_attempts,
-                retry_sleep_seconds=retry_sleep_seconds,
+        progress_bar = None
+        if show_progress and limit is not None:
+            progress_bar = click.progressbar(
+                length=limit,
+                label='Getting index',
+                show_pos=True,
+                show_percent=True,
+                show_eta=True,
             )
+            progress_bar.__enter__()
 
-            allpages = payload.get('query', {}).get('allpages', [])
-            total = len(allpages) + len(pages)
-            logger.info(f'Fetched {len(allpages)} (total={total}) index entries in current page')
+        try:
+            loop_counter = 0
+            while True:
+                loop_counter += 1
+                self._sleep_with_pause_jitter(pause_seconds)
+                remaining = None if limit is None else limit - len(pages)
+                if remaining is not None and remaining <= 0:
+                    break
+                batch_size = min(batch_size, remaining, 500) if remaining is not None else min(batch_size, 500)
 
-            batch_indexes = self._build_index_batch(allpages=allpages, remaining=remaining)
-            pages.extend(batch_indexes)
-            self._store_index_batch(batch_indexes)
+                logger.info(f'loop {loop_counter}: Fetching index batch with batch_size={batch_size}.')
+                params: dict[str, str] = {
+                    'action': 'query',
+                    'format': 'json',
+                    'list': 'allpages',
+                    'aplimit': str(batch_size),
+                    **({'apcontinue': next_continue} if next_continue else {}),
+                }
 
-            next_continue = self._extract_apcontinue(payload)
-            if not next_continue:
-                break
+                payload = self._fetch_index_payload_with_retry(
+                    params=params,
+                    nr_attempts=nr_attempts,
+                    retry_sleep_seconds=retry_sleep_seconds,
+                )
+
+                allpages = payload.get('query', {}).get('allpages', [])
+                total = len(allpages) + len(pages)
+                logger.info(f'Fetched {len(allpages)} (total={total}) index entries in current page')
+
+                batch_indexes = self._build_index_batch(allpages=allpages, remaining=remaining)
+                pages.extend(batch_indexes)
+                self._store_index_batch(batch_indexes)
+
+                if progress_bar is not None:
+                    progress_bar.update(len(batch_indexes))
+                elif show_progress:
+                    spinner = spinner_frames[spinner_step % len(spinner_frames)]
+                    spinner_step += 1
+                    click.echo(f'\rGetting index {spinner} pages fetched={len(pages)}', nl=False)
+
+                next_continue = self._extract_apcontinue(payload)
+                if not next_continue:
+                    break
+        finally:
+            if progress_bar is not None:
+                progress_bar.__exit__(None, None, None)
+            elif show_progress:
+                click.echo('')
 
         logger.info(f'Fetched {len(pages)} total index entries')
         return pages
@@ -353,6 +382,7 @@ class TolkienGatewayClient:
         pause_seconds: float | None = None,
         nr_attempts: int = 2,
         retry_sleep_seconds: float = 120.0,
+        show_progress: bool = True,
     ) -> int:
         """Crawl pages from an index and persist them with retries.
 
@@ -362,6 +392,7 @@ class TolkienGatewayClient:
             pause_seconds: Delay between page requests.
             nr_attempts: Number of retries per page.
             retry_sleep_seconds: Delay between page retries.
+            show_progress: Whether to render progress output in the terminal.
 
         Returns:
             Number of pages flushed during final cleanup flush.
@@ -375,7 +406,7 @@ class TolkienGatewayClient:
 
         # Resolve crawl input: use provided index or fetch one.
         if index is None:
-            crawl_index = self.get_index(limit=limit)
+            crawl_index = self.get_index(limit=limit, show_progress=show_progress)
         elif isinstance(index, Index):
             crawl_index = [index]
         else:
@@ -391,8 +422,19 @@ class TolkienGatewayClient:
         processed_count = 0
         stored_count = 0
         failed_count = 0
+        page_iterable: Iterable[Index] = crawl_index
+        progress_pages = None
+        if show_progress:
+            progress_pages = click.progressbar(
+                crawl_index,
+                label='Getting page content',
+                show_pos=True,
+                show_percent=True,
+                show_eta=True,
+            )
+            page_iterable = progress_pages.__enter__()
         try:
-            for item in crawl_index:
+            for item in page_iterable:
                 title = item.title
 
                 # Skip network work if this page is already stored.
@@ -436,6 +478,8 @@ class TolkienGatewayClient:
                 # Polite pause between pages.
                 self._sleep_with_pause_jitter(pause_seconds)
         finally:
+            if progress_pages is not None:
+                progress_pages.__exit__(None, None, None)
             # Always flush buffered pages, even on interruption/error.
             flushed = self.flush()
 

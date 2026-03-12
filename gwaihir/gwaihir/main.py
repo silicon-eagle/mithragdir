@@ -94,7 +94,7 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
 @click.option('--sparse-model-name', default='Qdrant/bm25', show_default=True)
 @click.option('--dense-vector-name', default='dense', show_default=True)
 @click.option('--sparse-vector-name', default='sparse', show_default=True)
-@click.option('--progress/--no-progress', default=True, show_default=True, help='Show progress bars for chunking and encoding stages.')
+@click.option('--progress/--no-progress', default=True, show_default=True, help='Show progress output for read-data, chunk, and encode stages.')
 def cli(
     steps: tuple[str, ...],
     db_path: Path,
@@ -182,6 +182,7 @@ def cli(
                     pause_seconds=index_pause_seconds,
                     nr_attempts=index_nr_attempts,
                     retry_sleep_seconds=index_retry_sleep_seconds,
+                    show_progress=progress,
                 )
                 wiki_client.crawl(
                     index=index,
@@ -189,6 +190,7 @@ def cli(
                     pause_seconds=crawl_pause_seconds,
                     nr_attempts=crawl_nr_attempts,
                     retry_sleep_seconds=crawl_retry_sleep_seconds,
+                    show_progress=progress,
                 )
                 text_client.ingest(limit=text_limit, pause_seconds=text_pause_seconds)
             finally:

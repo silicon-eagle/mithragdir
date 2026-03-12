@@ -1,10 +1,10 @@
-# Tolkien RAG Chatbot Implementation Plan (Hybrid Architecture)
+# Tolkien RAG Chatbot Implementation Plan (Python Architecture)
 
 ## 1. High-Level Architecture Overview
 
 The system is divided into two distinct lifecycles:
 1. **The Data Pipeline (Python):** A script you run locally *once* (or periodically) to scrape the Tolkien Gateway, chunk the text, generate embeddings, and populate your databases.
-2. **The Runtime Application (Rust + Svelte):** The continuous web service. The Rust backend handles live API requests and LLM orchestration, while SvelteKit provides the user interface.
+2. **The Runtime Application (Python + React):** The continuous web service. The Python (FastAPI) backend handles live API requests and LLM orchestration (via LangChain), while React provides the user interface.
 
 ---
 
@@ -18,15 +18,15 @@ Python handles all the messy string manipulation and data preparation.
 * **Database Clients:** Standard `sqlite3` for local text storage and `qdrant-client` for pushing vectors.
 
 ### B. Storage Layer (Shared)
-* **Relational Database:** **SQLite**. The Python script creates a `tolkien.db` file containing `articles` and `chunks` tables. The Rust backend reads from this exact same file.
-* **Vector Store:** **Qdrant** (running via Docker). Python inserts the vectors, and Rust queries them.
+* **Relational Database:** **SQLite**. The Python script creates a `redbook.db` file containing `articles` and `chunks` tables. The FastAPI backend reads from this exact same file.
+* **Vector Store:** **Qdrant** (running via Docker). Python inserts the vectors, and the FastAPI backend queries them.
 
-### C. Backend API & RAG Pipeline (Rust)
-This is where you focus your Rust learning on networking and AI orchestration.
-* **Web Framework:** **Axum** (backed by Tokio) to serve the REST API.
-* **Database Client:** **`sqlx`** to asynchronously query the SQLite database.
-* **Vector Client:** **`qdrant-client`** (Rust crate) to perform semantic searches.
-* **AI Orchestration:** **`rig`**. This crate handles the Gemini LLM integration, prompt building, and streaming the response back to Axum.
+### C. Backend API & RAG Pipeline (Python)
+This is where you handle API processing and AI orchestration.
+* **Web Framework:** **FastAPI** to serve the REST API.
+* **Database Client:** Standard **`sqlite3`** or **SQLAlchemy** to asynchronously query the SQLite database.
+* **Vector Client:** **`qdrant-client`** (Python package) to perform semantic searches.
+* **AI Orchestration:** **LangChain**. This handles the Gemini/OpenAI LLM integration, prompt building, and streaming the response back via SSE.
 
 ### D. Frontend UI (SvelteKit)
 * **Framework:** **SvelteKit** (using `@sveltejs/adapter-node`).
@@ -44,18 +44,18 @@ This is where you focus your Rust learning on networking and AI orchestration.
 4. **Chunk & Embed:** Split the text into ~500-token chunks with ~50-token overlaps. Prepend the article title to each chunk. Send chunks to your embedding API.
 5. **Store:** Insert the raw text/metadata into SQLite, and insert the vectors (with the SQLite `chunk.id` as the vector ID) into Qdrant.
 
-### Phase 2: The Rust Backend Server (`/backend`)
-1. **Initialize Rust Project:** `cargo new backend` and add `axum`, `tokio`, `sqlx`, `rig`, and `qdrant-client` to your `Cargo.toml`.
-2. **Setup State:** Create an Axum `AppState` struct that holds the `sqlx::SqlitePool` (pointing to the `.db` file Python created) and the Qdrant client.
-3. **Write the RAG Logic:** * Create a function that takes a query, embeds it (using `rig` or an HTTP client), and searches Qdrant for the top 5 vector IDs.
+### Phase 2: The FastAPI Backend Server (`/cirdan-api`)
+1. **Initialize Python Project:** Using `uv` for package management, initialize the project and install `fastapi`, `uvicorn`, `langchain`, `qdrant-client`, and the relevant LangChain LLM packages (e.g. `langchain-openai` or `langchain-google-genai`).
+2. **Setup State:** Initialize your FastAPI app and load standard configurations like the SQLite connection string (pointing to the `.db` file Python created) and the Qdrant client instance during startup.
+3. **Write the RAG Logic:** * Create a LangChain retriever that takes a query, embeds it, and searches Qdrant for the top 5 vector IDs.
    * Query SQLite for the actual text content matching those 5 IDs.
-   * Initialize a `rig` agent with Gemini, a Middle-earth system prompt, and the retrieved context.
-4. **Expose the API:** Create the `POST /api/chat` route. Accept the message history, run the RAG logic, and stream the LLM response back using Axum's SSE (Server-Sent Events).
+   * Combine this into a LangChain prompt template (with a Middle-earth system prompt) and pass it to the LLM.
+4. **Expose the API:** Create the `POST /api/chat` FastAPI endpoint. Accept the message history, map it to the expected LangChain schema, run the RAG logic, and stream the LLM response back using FastAPI's `StreamingResponse` for SSE.
 
-### Phase 3: The SvelteKit Frontend (`/frontend`)
-1. **Scaffold:** `npx sv create frontend` and configure the Node adapter.
-2. **Proxy Route:** Create `src/routes/api/chat/+server.ts` to securely forward requests to your Rust backend (`http://localhost:8080/api/chat`).
-3. **Build the UI:** Implement the `useChat` hook in `+page.svelte`. Build a clean, Tailwind-styled chat interface that iterates over `$messages`.
+### Phase 3: The React Frontend (`/shire-ui`)
+1. **Scaffold:** `npm create vite@latest shire-ui -- --template react-ts`.
+2. **Proxy Route:** Configure `vite.config.ts` to securely proxy API requests to your FastAPI backend (`http://localhost:8000/api/chat`).
+3. **Build the UI:** Implement the `useChat` hook in `App.tsx`. Build a clean, Tailwind-styled chat interface that iterates over `messages`.
 
 ---
 
@@ -64,19 +64,19 @@ This is where you focus your Rust learning on networking and AI orchestration.
 ```text
 tolkien-rag/
 ├── .env                       # Shared environment variables
-├── docker-compose.yml         # Runs Qdrant, Rust Backend, and Svelte Frontend
+├── docker-compose.yml         # Runs Qdrant, FastAPI Backend, and React Frontend
 │
 ├── data-pipeline/             # Python (Run locally, once)
 │   ├── requirements.txt
-│   ├── tolkien.db             # Generated SQLite file (Rust will read this!)
+│   ├── tolkien.db             # Generated SQLite file (FastAPI will read this!)
 │   └── ingest.py              # Main scraping and embedding script
 │
-├── backend/                   # Rust Cargo Project
-│   ├── Cargo.toml
+├── cirdan-api/                # FastAPI Web API Project
+│   ├── pyproject.toml         # Requirements and uv configuration
 │   ├── Dockerfile
-│   └── src/
-│       ├── main.rs            # Axum server and route handlers
-│       └── rag.rs             # Qdrant queries and `rig` LLM logic
+│   ├── main.py                # FastAPI server and endpoints
+│   └── services/
+│       └── rag_service.py     # Qdrant queries and LangChain logic
 │
 └── frontend/                  # SvelteKit Application
     ├── package.json
