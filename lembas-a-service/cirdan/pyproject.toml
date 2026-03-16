@@ -17,7 +17,11 @@ dependencies = [
 	'pydantic-settings>=2.10.1',
 	"qdrant-client>=1.15.1",
 	'uvicorn>=0.34.0',
+	"lembas-core",
 ]
+
+[tool.uv.sources]
+lembas-core = { workspace = true }
 
 [project.scripts]
 cirdan = 'cirdan.main:main'
