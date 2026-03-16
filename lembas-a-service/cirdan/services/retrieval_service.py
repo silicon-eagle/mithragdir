@@ -19,7 +19,7 @@ class RetrievalService:
 
     async def search_relevant_chunks(self, query: str, top_k: int) -> list[RetrievedChunk]:
         query_embedding = await self.llm_service.generate_embedding(query)
-        vector_hits = await self.qdrant_repository.search(query_embedding=query_embedding, top_k=top_k)
+        vector_hits = await self.qdrant_repository.search_hybrid_reranked(query=query, dense_embedding=query_embedding, top_k=top_k)
 
         if not vector_hits:
             return []

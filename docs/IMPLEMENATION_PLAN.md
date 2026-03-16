@@ -18,6 +18,7 @@ Python handles all the messy string manipulation and data preparation.
 * **Database Clients:** Standard `sqlite3` for local text storage and `qdrant-client` for pushing vectors.
 
 ### B. Storage Layer (Shared)
+* **Shared Library:** **lembas-core**. Contains shared database connection logic and Pydantic models (e.g., `Chunk`) to ensure consistency between pipeline and backend.
 * **Relational Database:** **SQLite**. The Python script creates a `redbook.db` file containing `articles` and `chunks` tables. The FastAPI backend reads from this exact same file.
 * **Vector Store:** **Qdrant** (running via Docker). Python inserts the vectors, and the FastAPI backend queries them.
 
@@ -37,16 +38,16 @@ This is where you handle API processing and AI orchestration.
 
 ## 3. Step-by-Step Implementation Plan
 
-### Phase 1: The Python Data Pipeline (`/data-pipeline`)
-1. **Initialize Environment:** Create a `requirements.txt` with `httpx`, `tiktoken`, `qdrant-client`, and `python-dotenv`.
-2. **Setup Databases:** Write a function to initialize the SQLite schema (`articles` and `chunks` tables) and the Qdrant collection.
+### Phase 1: The Gwaihir Data Pipeline (`/gwaihir`)
+1. **Initialize Environment:** Configure `uv` workspace and dependencies.
+2. **Setup Databases:** Use `lembas-core` to initialize the SQLite schema (`articles` and `chunks` tables).
 3. **Scrape & Parse:** Hit the Tolkien Gateway MediaWiki API (`prop=extracts`). Extract the clean text.
 4. **Chunk & Embed:** Split the text into ~500-token chunks with ~50-token overlaps. Prepend the article title to each chunk. Send chunks to your embedding API.
 5. **Store:** Insert the raw text/metadata into SQLite, and insert the vectors (with the SQLite `chunk.id` as the vector ID) into Qdrant.
 
-### Phase 2: The FastAPI Backend Server (`/cirdan-api`)
-1. **Initialize Python Project:** Using `uv` for package management, initialize the project and install `fastapi`, `uvicorn`, `langchain`, `qdrant-client`, and the relevant LangChain LLM packages (e.g. `langchain-openai` or `langchain-google-genai`).
-2. **Setup State:** Initialize your FastAPI app and load standard configurations like the SQLite connection string (pointing to the `.db` file Python created) and the Qdrant client instance during startup.
+### Phase 2: The Cirdan Backend Server (`/cirdan`)
+1. **Initialize Python Project:** Using `uv` workspace, ensure `cirdan` depends on `lembas-core`.
+2. **Setup State:** Initialize your FastAPI app and load standard configurations. Use `lembas-core` for DB connections.
 3. **Write the RAG Logic:** * Create a LangChain retriever that takes a query, embeds it, and searches Qdrant for the top 5 vector IDs.
    * Query SQLite for the actual text content matching those 5 IDs.
    * Combine this into a LangChain prompt template (with a Middle-earth system prompt) and pass it to the LLM.
@@ -62,21 +63,26 @@ This is where you handle API processing and AI orchestration.
 ## 4. Revised Repository Structure
 
 ```text
-tolkien-rag/
+lembas-service/
+├── pyproject.toml             # Workspace root
 ├── .env                       # Shared environment variables
-├── docker-compose.yml         # Runs Qdrant, FastAPI Backend, and React Frontend
+├── docker-compose.yml         # Runs Qdrant, Cirdan, and Frontend
 │
-├── data-pipeline/             # Python (Run locally, once)
-│   ├── requirements.txt
-│   ├── tolkien.db             # Generated SQLite file (FastAPI will read this!)
-│   └── ingest.py              # Main scraping and embedding script
+├── lembas-core/               # Shared Python Library
+│   ├── pyproject.toml
+│   └── src/lembas_core/
+│       ├── db.py              # Shared SQLite connection logic
+│       └── models.py          # Shared Pydantic models
 │
-├── cirdan-api/                # FastAPI Web API Project
-│   ├── pyproject.toml         # Requirements and uv configuration
-│   ├── Dockerfile
+├── gwaihir/                   # Data Pipeline
+│   ├── pyproject.toml         # Depends on lembas-core
+│   ├── tolkien.db             # Generated SQLite file
+│   └── gwaihir/               # Ingestion logic
+│
+├── cirdan/                    # FastAPI Web API Project
+│   ├── pyproject.toml         # Depends on lembas-core
 │   ├── main.py                # FastAPI server and endpoints
-│   └── services/
-│       └── rag_service.py     # Qdrant queries and LangChain logic
+│   └── cirdan/
 │
 └── frontend/                  # SvelteKit Application
     ├── package.json
@@ -85,3 +91,4 @@ tolkien-rag/
     └── src/
         ├── routes/+page.svelte       # Chat UI
         └── routes/api/chat/+server.ts # API Proxy
+```

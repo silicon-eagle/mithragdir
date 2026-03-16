@@ -19,9 +19,7 @@ def default_logger_format() -> str:
     )
 
 
-def setup_logger(
-    level: str = 'DEBUG', log_dir: Path = Path.cwd() / '.log', fmt: str = default_logger_format()
-) -> None:
+def setup_logger(level: str = 'DEBUG', log_dir: Path = Path.cwd() / '.log', fmt: str = default_logger_format()) -> None:
     """Configure Loguru with console and rotating file sinks.
 
     Creates the log directory (``.log`` by default) if it does not yet exist

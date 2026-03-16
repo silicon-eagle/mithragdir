@@ -6,11 +6,16 @@ readme = 'README.md'
 requires-python = '>=3.13'
 dependencies = [
 	'fastapi>=0.115.0',
-	'langchain>=1.2.10',
+	"fastembed>=0.7.4",
+	"langchain>=1.2.10",
+	"langchain-community>=0.4.1",
+	"langchain-openai>=1.1.11",
+	"langchain-qdrant>=1.1.0",
+	"langgraph>=1.1.2",
 	'loguru>=0.7.3',
 	'pydantic>=2.11.9',
 	'pydantic-settings>=2.10.1',
-	'qdrant-client>=1.15.1',
+	"qdrant-client>=1.15.1",
 	'uvicorn>=0.34.0',
 ]
 

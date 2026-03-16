@@ -10,23 +10,25 @@ It reads from a SQLite database and a Qdrant vector store to assemble contexts, 
 
 ## 2. Target Project Structure
 ```text
-cirdan-api/
-├── main.py
-├── config.py
-├── domain/
-│   ├── models.py
-│   └── exceptions.py
-├── api/
-│   ├── health.py
-│   └── chat.py
-├── services/
-│   ├── rag_orchestrator.py
-│   ├── retrieval_service.py
-│   ├── llm_service.py
-│   └── prompt_builder.py
-└── data/
-    ├── sqlite_repository.py
-    └── qdrant_repository.py
+cirdan/
+├── pyproject.toml        # Includes dependency on lembas-core
+├── cirdan/
+│   ├── main.py
+│   ├── config.py
+│   ├── domain/
+│   │   ├── models.py     # Domain specific models (imports base from lembas-core)
+│   │   └── exceptions.py
+│   ├── api/
+│   │   ├── health.py
+│   │   └── chat.py
+│   ├── services/
+│   │   ├── rag_orchestrator.py
+│   │   ├── retrieval_service.py
+│   │   ├── llm_service.py
+│   │   └── prompt_builder.py
+│   └── data/
+│       ├── sqlite_repository.py # Extends lembas-core DB logic
+│       └── qdrant_repository.py
 ```
 
 ---
@@ -36,9 +38,9 @@ cirdan-api/
 ### EPIC 1: Skeleton, Config, & Health (Sprint Board Setup)
 
 **Task 1.1: Initialize Project & Config Parsing**
-*   **What:** Create the FastAPI skeleton and strongly-typed configuration.
+*   **What:** Create the FastAPI skeleton, strongly-typed configuration, and integrate `lembas-core`.
 *   **Functions/Classes to implement:**
-    *   `uv init` (with basic dependencies)
+    *   `uv init` (with workspace configuration).
     *   `config.py`: Create `Settings` class (via `pydantic-settings`) with properties for `sqlite_connection_string`, `qdrant_url`, `qdrant_collection`, `llm_provider`, `llm_api_key`, `llm_model`, `embedding_model`, `top_k`.
     *   `main.py`: Add startup logic to validate config values (fail fast if missing API keys).
 
@@ -57,10 +59,10 @@ cirdan-api/
 ### EPIC 2: Data Access Adapters (Retrieval Layer)
 
 **Task 2.1: SQLite Repository**
-*   **What:** Hydrate chunk data.
+*   **What:** Hydrate chunk data using `lembas-core`.
 *   **Functions/Classes to implement:**
-    *   `data/sqlite_repository.py`: Initialize database connection.
-    *   `async def get_chunks_by_ids(chunk_ids: list[str]) -> list[RetrievedChunk]`: Executes a SQL query against `tolkien.db` returning content mapping for the exact chunk IDs.
+    *   `data/sqlite_repository.py`: Inherit from or use `lembas_core.db.RedbookDatabase` (or similar) to handle connections.
+    *   `async def get_chunks_by_ids(chunk_ids: list[str]) -> list[RetrievedChunk]`: Executes a SQL query against `tolkien.db` using the shared connection logic.
 
 **Task 2.2: Qdrant Repository**
 *   **What:** Semantic search over chunks.
