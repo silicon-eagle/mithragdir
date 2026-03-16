@@ -7,10 +7,9 @@ from urllib.parse import quote
 
 import click
 from curl_cffi import requests as curl_requests
+from lembas_core.db import RedbookDatabase
+from lembas_core.schemas import Index, Page
 from loguru import logger
-
-from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Index, Page
 
 DEFAULT_USER_AGENT = 'gwaihir-bot/1.0 (+https://github.com/silicon-eagle/; mailto:silicon.eagle@pm.me)'
 

@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 from enum import StrEnum
 from typing import Any
 
 import click
 from bs4 import BeautifulSoup
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from lembas_core.db import RedbookDatabase
+from lembas_core.models import Chunk, Document, Text, WikiPage
 from loguru import logger
 from markdownify import markdownify as md
 from transformers import AutoTokenizer
-
-from gwaihir.db.db import RedbookDatabase
 
 
 class ContentType(StrEnum):
@@ -186,11 +185,9 @@ class Chunker:
         Returns:
             Number of previously stored chunks.
         """
-        with self.db.connect() as conn:
-            row = conn.execute('SELECT COUNT(*) FROM chunks;').fetchone()
-            existing = int(row[0]) if row is not None else 0
-            conn.execute('DELETE FROM chunks;')
-        return existing
+        count = Chunk.select().count()
+        Chunk.delete().execute()
+        return count
 
     def chunk_documents(self, show_progress: bool = True) -> tuple[int, int]:
         """Chunk all ingested documents (wiki and text) and store chunk rows.
@@ -201,60 +198,51 @@ class Chunker:
         Returns:
             Tuple of ``(processed_documents, inserted_chunks)``.
         """
-        query = """
-        SELECT
-            d.document_id,
-            d.title,
-            d.url,
-            d.raw_content,
-            CASE
-                WHEN wp.document_id IS NOT NULL THEN 'html'
-                ELSE 'text'
-            END AS content_type
-        FROM document AS d
-        LEFT JOIN wiki_page AS wp ON wp.document_id = d.document_id
-        LEFT JOIN text AS t ON t.document_id = d.document_id
-        WHERE wp.document_id IS NOT NULL OR t.document_id IS NOT NULL
-        ORDER BY d.document_id;
-        """
+        # Using Peewee to iterate over all documents.
+        documents = Document.select().order_by(Document.document_id)
 
-        with self.db.connect() as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(query).fetchall()
+        # Convert to list to know length for progress bar (could be large though)
+        docs = list(documents)
 
         processed_documents = 0
         inserted_chunks = 0
 
-        def process_row(row: sqlite3.Row) -> None:
-            nonlocal processed_documents, inserted_chunks
-            document_id = int(row['document_id'])
-            title = str(row['title'])
-            url = str(row['url']) if row['url'] is not None else None
-            content = str(row['raw_content']) if row['raw_content'] is not None else ''
-            content_type = ContentType(str(row['content_type']))
+        logger.info(f'Starting chunking of {len(docs)} documents.')
 
-            logger.debug(f'Chunking document_id={document_id} title="{title}" content_type={content_type}')
-            if not content.strip():
-                logger.warning(f'Skipping empty document content for document_id={document_id}')
+        # Define processing logic
+        def process_doc(doc: Document) -> None:
+            nonlocal processed_documents, inserted_chunks
+            content = doc.raw_content
+            if not content or not content.strip():
+                logger.warning(f'Skipping empty document content for document_id={doc.document_id}')
                 return
 
+            is_wiki = WikiPage.select().where(WikiPage.document == doc).exists()
+            content_type = ContentType.HTML if is_wiki else ContentType.TEXT
+
+            if not is_wiki:
+                is_text = Text.select().where(Text.document == doc).exists()
+                if not is_text:
+                    return
+
+            logger.debug(f'Chunking document_id={doc.document_id} title="{doc.title}" content_type={content_type}')
+
             inserted = self.chunk_document(
-                document_id=document_id,
+                document_id=doc.document_id,
                 content=content,
                 content_type=content_type,
-                metadata={'document_id': document_id, 'title': title, 'url': url},
+                metadata={'document_id': doc.document_id, 'title': doc.title, 'url': doc.url},
             )
             inserted_chunks += inserted
             processed_documents += 1
 
-        logger.info(f'Starting chunking of {len(rows)} documents.')
         if show_progress:
-            with click.progressbar(rows, label='Chunking documents', show_pos=True) as progress_rows:
-                for row in progress_rows:
-                    process_row(row)
+            with click.progressbar(docs, label='Chunking documents', show_pos=True) as progress_docs:
+                for doc in progress_docs:
+                    process_doc(doc)
         else:
-            for row in rows:
-                process_row(row)
+            for doc in docs:
+                process_doc(doc)
 
         logger.info(f'Chunking finished: processed_documents={processed_documents}, inserted_chunks={inserted_chunks}')
 

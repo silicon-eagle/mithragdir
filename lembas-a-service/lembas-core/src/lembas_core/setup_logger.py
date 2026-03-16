@@ -12,14 +12,18 @@ def default_logger_format() -> str:
         str: Format string used for both console and file sinks.
     """
     return (
-        '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | '
-        '<level>{level: <8}</level> | '
-        '<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - '
-        '<level>{message}</level>'
+        "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+        "<level>{message}</level>"
     )
 
 
-def setup_logger(level: str = 'DEBUG', log_dir: Path = Path.cwd() / '.log', fmt: str = default_logger_format()) -> None:
+def setup_logger(
+    level: str = "DEBUG",
+    log_dir: Path = Path.cwd() / ".log",
+    fmt: str = default_logger_format(),
+) -> None:
     """Configure Loguru with console and rotating file sinks.
 
     Creates the log directory (``.log`` by default) if it does not yet exist
@@ -33,8 +37,8 @@ def setup_logger(level: str = 'DEBUG', log_dir: Path = Path.cwd() / '.log', fmt:
     """
     log_dir.mkdir(exist_ok=True)
 
-    date_str = datetime.now().strftime('%Y-%m-%d')
-    log_file = log_dir / f'{date_str}_logfile.log'
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    log_file = log_dir / f"{date_str}_logfile.log"
 
     # Remove all default Loguru sinks
     logger.remove()
@@ -50,7 +54,7 @@ def setup_logger(level: str = 'DEBUG', log_dir: Path = Path.cwd() / '.log', fmt:
     # Add file sink with structured logging
     logger.add(
         log_file,
-        rotation='10 MB',
+        rotation="10 MB",
         level=level,
         format=fmt,
         enqueue=True,

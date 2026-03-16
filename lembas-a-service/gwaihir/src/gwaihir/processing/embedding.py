@@ -6,14 +6,13 @@ from itertools import groupby
 
 import click
 from fastembed import SparseTextEmbedding
+from lembas_core.db import RedbookDatabase
+from lembas_core.models import Chunk
 from loguru import logger
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, PointStruct, SparseVector, SparseVectorParams, VectorParams
 from sentence_transformers import SentenceTransformer
-
-from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Chunk
 
 DEFAULT_DENSE_MODEL = 'google/embeddinggemma-300m'
 DEFAULT_SPARSE_MODEL = 'Qdrant/bm25'

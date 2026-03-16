@@ -5,9 +5,9 @@ from pathlib import Path
 
 import click
 from dotenv import load_dotenv
+from lembas_core.db import RedbookDatabase
 from loguru import logger
 
-from gwaihir.db.db import RedbookDatabase
 from gwaihir.processing.chunker import Chunker, ChunkUnit
 from gwaihir.processing.embedding import ChunkEmbedder
 from gwaihir.retriever.text_client import TextClient

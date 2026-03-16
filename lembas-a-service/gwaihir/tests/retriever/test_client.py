@@ -1,18 +1,15 @@
 from pathlib import Path
 
 import pytest
-from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Index, Page
 from gwaihir.retriever.tolkien_gateway_client import TolkienGatewayClient
+from lembas_core.db import RedbookDatabase
+from lembas_core.schemas import Index, Page
 from numpy import ceil
 
 
 @pytest.fixture
 def db(tmp_path: Path) -> RedbookDatabase:
     database = RedbookDatabase(db_path=tmp_path / 'test_client.db')
-    database._create_index_table()
-    database._create_document_table()
-    database._create_wiki_page_table()
     return database
 
 

@@ -3,8 +3,6 @@ from pathlib import Path
 import pytest
 from loguru import logger
 
-pytest_plugins = ['plugins.init_logger']
-
 
 @pytest.fixture(scope='session', autouse=True)
 def test_path() -> Path:

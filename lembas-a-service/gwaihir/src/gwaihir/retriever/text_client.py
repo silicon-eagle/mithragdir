@@ -4,10 +4,9 @@ import csv
 import time
 from pathlib import Path
 
+from lembas_core.db import RedbookDatabase
+from lembas_core.schemas import Text
 from loguru import logger
-
-from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Text
 
 
 class TextClient:

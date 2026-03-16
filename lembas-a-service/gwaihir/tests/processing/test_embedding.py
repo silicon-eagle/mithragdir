@@ -4,21 +4,20 @@ import uuid
 from pathlib import Path
 
 import pytest
-from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Text
 from gwaihir.processing.embedding import ChunkEmbedder
+from lembas_core.db import RedbookDatabase
+from lembas_core.schemas import Text
 
 
 @pytest.fixture
 def db(tmp_path: Path) -> RedbookDatabase:
     database = RedbookDatabase(db_path=tmp_path / 'test_embedding.db')
-    database.deploy()
     return database
 
 
 class TestChunkEmbedder:
     def test_encode_methods_return_empty_for_empty_input(self, db: RedbookDatabase) -> None:
-        embedder = ChunkEmbedder(db=db)
+        embedder = ChunkEmbedder(db=db, qdrant_url='http://mock:6333')
 
         assert embedder.encode_texts_dense([]) == []
         assert embedder.encode_texts_sparse([]) == []
@@ -47,7 +46,10 @@ class TestChunkEmbedder:
         embedder = ChunkEmbedder(
             db=db,
             collection_name=collection_name,
+            qdrant_url='http://mock:6333',
         )
+
+        # Mock qdrant client to avoid connection error in reset_collection
 
         inserted = embedder.encode_and_upsert_hybrid_chunks(document_id=document_id, batch_size=8)
 

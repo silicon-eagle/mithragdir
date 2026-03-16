@@ -1,15 +1,13 @@
 from pathlib import Path
 
 import pytest
-from gwaihir.db.db import RedbookDatabase
 from gwaihir.retriever.text_client import TextClient
+from lembas_core.db import RedbookDatabase
 
 
 @pytest.fixture
 def db(tmp_path: Path) -> RedbookDatabase:
     database = RedbookDatabase(db_path=tmp_path / 'test_text_client.db')
-    database._create_document_table()
-    database._create_text_table()
     return database
 
 

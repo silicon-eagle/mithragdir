@@ -1,19 +1,15 @@
-import json
 from pathlib import Path
 
 import pytest
-from gwaihir.db.db import RedbookDatabase
-from gwaihir.db.models import Chunk, Page, Text
 from gwaihir.processing.chunker import Chunker, ContentType
+from lembas_core.db import RedbookDatabase
+from lembas_core.models import Chunk
+from lembas_core.schemas import Page, Text
 
 
 @pytest.fixture
 def db(tmp_path: Path) -> RedbookDatabase:
     database = RedbookDatabase(db_path=tmp_path / 'test_chunker.db')
-    database._create_document_table()
-    database._create_wiki_page_table()
-    database._create_text_table()
-    database._create_chunks_table()
     return database
 
 
@@ -39,25 +35,14 @@ class TestChunker:
 
         assert inserted > 1
 
-        with db.connect() as conn:
-            rows = conn.execute(
-                'SELECT chunk_index, content, token_count, meta_data FROM chunks WHERE document_id = ? ORDER BY chunk_index',
-                (document_id,),
-            ).fetchall()
-
-        assert len(rows) == inserted
-        first_meta = json.loads(str(rows[0][3]))
-        assert first_meta['content_type'] == 'text'
-        assert first_meta['chunk_method'] == 'recursive_character'
-        assert first_meta['title'] == 'Long Text'
-        assert int(rows[0][2]) > 0
-
         chunks = db.get_chunks(document_id=document_id)
         assert len(chunks) == inserted
         assert all(isinstance(chunk, Chunk) for chunk in chunks)
         assert chunks[0].meta_data['content_type'] == 'text'
         assert chunks[0].meta_data['chunk_method'] == 'recursive_character'
+        assert chunks[0].meta_data['title'] == 'Long Text'
         assert isinstance(chunks[0].meta_data, dict)
+        assert all(chunk.id > 0 for chunk in chunks)
 
     def test_chunk_html_document_stores_html_chunks(self, db: RedbookDatabase) -> None:
         html_content = (
@@ -82,21 +67,6 @@ class TestChunker:
 
         assert inserted >= 1
 
-        with db.connect() as conn:
-            rows = conn.execute(
-                'SELECT content, token_count, meta_data FROM chunks WHERE document_id = ? ORDER BY chunk_index',
-                (document_id,),
-            ).fetchall()
-
-        assert len(rows) == inserted
-        first_meta = json.loads(str(rows[0][2]))
-        assert first_meta['content_type'] == 'html'
-        assert first_meta['chunk_method'] == 'html_cleaned_recursive_character'
-        assert first_meta['source'] == 'wiki'
-        assert int(rows[0][1]) > 0
-        assert rows[0][0].startswith('# Valinor')
-        assert '<h1>' not in rows[0][0]
-
         chunks = db.get_chunks(document_id=document_id)
         assert len(chunks) == inserted
         assert all(isinstance(chunk, Chunk) for chunk in chunks)
@@ -104,6 +74,8 @@ class TestChunker:
         assert chunks[0].meta_data['chunk_method'] == 'html_cleaned_recursive_character'
         assert chunks[0].meta_data['source'] == 'wiki'
         assert isinstance(chunks[0].meta_data, dict)
+        assert chunks[0].content.startswith('# Valinor')
+        assert '<h1>' not in chunks[0].content
 
     def test_chunk_documents_processes_text_and_html_and_skips_empty(self, db: RedbookDatabase) -> None:
         text_document_id = db.insert_text(

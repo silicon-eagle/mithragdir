@@ -4,17 +4,16 @@ import uuid
 from pathlib import Path
 
 import pytest
-from gwaihir.db.db import RedbookDatabase
 from gwaihir.processing.chunker import Chunker
 from gwaihir.processing.embedding import ChunkEmbedder
 from gwaihir.retriever.tolkien_gateway_client import TolkienGatewayClient
+from lembas_core.db import RedbookDatabase
 from qdrant_client import models as qdrant_models
 
 
 @pytest.fixture
 def db(tmp_path: Path) -> RedbookDatabase:
     database = RedbookDatabase(db_path=tmp_path / 'test_pipeline_integration.db')
-    database.deploy()
     return database
 
 
