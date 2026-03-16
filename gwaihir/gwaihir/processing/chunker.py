@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from loguru import logger
 from markdownify import markdownify as md
+from transformers import AutoTokenizer
 
 from gwaihir.db.db import RedbookDatabase
 
@@ -17,6 +18,11 @@ from gwaihir.db.db import RedbookDatabase
 class ContentType(StrEnum):
     TEXT = 'text'
     HTML = 'html'
+
+
+class ChunkUnit(StrEnum):
+    CHARACTERS = 'characters'
+    TOKENS = 'tokens'
 
 
 def clean_wiki_html_for_chunking(html_content: str) -> str:
@@ -55,24 +61,41 @@ class Chunker:
     def __init__(
         self,
         db: RedbookDatabase,
-        chunk_size: int = 1000,
-        chunk_overlap: int = 200,
+        chunk_size: int = 512,
+        chunk_overlap: int = 64,
+        chunk_unit: ChunkUnit = ChunkUnit.CHARACTERS,
+        tokenizer_name: str = 'google/embeddinggemma-300m',
     ) -> None:
         """Configure text and HTML chunking strategies.
 
         Args:
             db: Database used to persist chunks.
             chunk_size: Maximum chunk size for text splitter.
-            chunk_overlap: Number of overlapping characters between chunks.
+            chunk_overlap: Number of overlapping units between chunks.
+            chunk_unit: Unit used by splitter; either characters or tokens.
+            tokenizer_name: Tokenizer used when chunk_unit='tokens'.
         """
         self.db = db
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self._text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            add_start_index=True,
-        )
+        self.chunk_unit = chunk_unit
+        self.tokenizer_name = tokenizer_name
+        self._tokenizer = None
+
+        if self.chunk_unit == ChunkUnit.TOKENS:
+            self._tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name, use_fast=True)
+            self._text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap,
+                length_function=self._token_length,
+                add_start_index=True,
+            )
+        else:
+            self._text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap,
+                add_start_index=True,
+            )
 
     def chunk_document(
         self,
@@ -98,10 +121,10 @@ class Chunker:
         if content_type == ContentType.HTML:
             cleaned_content = clean_wiki_html_for_chunking(content)
             documents = self._text_splitter.create_documents([cleaned_content], metadatas=[base_metadata])
-            chunk_method = 'html_cleaned_recursive_character'
+            chunk_method = 'html_cleaned_recursive_character' if self.chunk_unit == ChunkUnit.CHARACTERS else 'html_cleaned_recursive_tokens'
         else:
             documents = self._text_splitter.create_documents([content], metadatas=[base_metadata])
-            chunk_method = 'recursive_character'
+            chunk_method = 'recursive_character' if self.chunk_unit == ChunkUnit.CHARACTERS else 'recursive_tokens'
 
         chunks_inserted = 0
         chunk_lengths: list[int] = []
@@ -139,7 +162,7 @@ class Chunker:
         return chunks_inserted
 
     def _token_count(self, text: str) -> int:
-        """Estimate token count using whitespace tokenization.
+        """Estimate token count for chunk content.
 
         Args:
             text: Chunk content.
@@ -147,7 +170,15 @@ class Chunker:
         Returns:
             Approximate token count.
         """
+        if self._tokenizer is not None:
+            return self._token_length(text)
         return len(text.split())
+
+    def _token_length(self, text: str) -> int:
+        """Return tokenizer length without emitting max-sequence warnings."""
+        if self._tokenizer is None:
+            return len(text.split())
+        return len(self._tokenizer.encode(text, add_special_tokens=False, verbose=False))
 
     def clear_chunks(self) -> int:
         """Delete all chunk rows and return how many existed before deletion.

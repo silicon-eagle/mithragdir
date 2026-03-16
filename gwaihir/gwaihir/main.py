@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from loguru import logger
 
 from gwaihir.db.db import RedbookDatabase
-from gwaihir.processing.chunker import Chunker
+from gwaihir.processing.chunker import Chunker, ChunkUnit
 from gwaihir.processing.embedding import ChunkEmbedder
 from gwaihir.retriever.text_client import TextClient
 from gwaihir.retriever.tolkien_gateway_client import TolkienGatewayClient
@@ -27,8 +27,10 @@ DEFAULT_CRAWL_PAUSE_SECONDS = 0.5
 DEFAULT_CRAWL_NR_ATTEMPTS = 2
 DEFAULT_CRAWL_RETRY_SLEEP_SECONDS = 30.0
 
-DEFAULT_CHUNK_SIZE = 1000
-DEFAULT_CHUNK_OVERLAP = 200
+DEFAULT_CHUNK_SIZE = 512
+DEFAULT_CHUNK_OVERLAP = 64
+DEFAULT_CHUNK_UNIT = 'tokens'
+DEFAULT_CHUNK_TOKENIZER_NAME = 'google/embeddinggemma-300m'
 
 
 def _default_logger_format() -> str:
@@ -78,6 +80,8 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
 @click.option('--text-pause-seconds', default=0.0, type=float, show_default=True)
 @click.option('--chunk-size', default=DEFAULT_CHUNK_SIZE, type=int, show_default=True)
 @click.option('--chunk-overlap', default=DEFAULT_CHUNK_OVERLAP, type=int, show_default=True)
+@click.option('--chunk-unit', type=click.Choice(['characters', 'tokens']), default=DEFAULT_CHUNK_UNIT, show_default=True)
+@click.option('--chunk-tokenizer-name', default=DEFAULT_CHUNK_TOKENIZER_NAME, show_default=True)
 @click.option('--clear-existing-chunks/--no-clear-existing-chunks', default=True, show_default=True)
 @click.option('--encode-document-id', type=int, default=None, help='Optional document_id filter when encoding chunks.')
 @click.option('--encode-batch-size', default=32, type=int, show_default=True)
@@ -119,6 +123,8 @@ def cli(
     text_pause_seconds: float,
     chunk_size: int,
     chunk_overlap: int,
+    chunk_unit: str,
+    chunk_tokenizer_name: str,
     clear_existing_chunks: bool,
     encode_document_id: int | None,
     encode_batch_size: int,
@@ -144,7 +150,13 @@ def cli(
 
     try:
         if 'clear-chunks' in selected_steps:
-            chunker = Chunker(db=db, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+            chunker = Chunker(
+                db=db,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                chunk_unit=ChunkUnit(chunk_unit),
+                tokenizer_name=chunk_tokenizer_name,
+            )
             removed = chunker.clear_chunks()
             logger.info(f'Removed {removed} existing chunks')
 
@@ -198,7 +210,13 @@ def cli(
                 wiki_client.close()
 
         if 'chunk' in selected_steps:
-            chunker = Chunker(db=db, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+            chunker = Chunker(
+                db=db,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                chunk_unit=ChunkUnit(chunk_unit),
+                tokenizer_name=chunk_tokenizer_name,
+            )
             if clear_existing_chunks:
                 removed = chunker.clear_chunks()
                 logger.info(f'Removed {removed} existing chunks')
