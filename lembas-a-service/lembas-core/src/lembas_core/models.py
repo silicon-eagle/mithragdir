@@ -76,3 +76,14 @@ class Chunk(BaseModel):
 
     class Meta:
         table_name = "chunks"
+
+    def build_metadata_payload(self) -> dict:
+        payload = {
+            "document_id": self.document_id,
+            "chunk_index": self.chunk_index,
+            "token_count": self.token_count,
+            "content": self.content,
+        }
+        if self.meta_data:
+            payload.update(self.meta_data)
+        return payload

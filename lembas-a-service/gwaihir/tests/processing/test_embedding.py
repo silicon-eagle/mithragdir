@@ -17,7 +17,7 @@ def db(tmp_path: Path) -> RedbookDatabase:
 
 class TestChunkEmbedder:
     def test_encode_methods_return_empty_for_empty_input(self, db: RedbookDatabase) -> None:
-        embedder = ChunkEmbedder(db=db, qdrant_url='http://mock:6333')
+        embedder = ChunkEmbedder(db=db, qdrant_url=':memory:')
 
         assert embedder.encode_texts_dense([]) == []
         assert embedder.encode_texts_sparse([]) == []
@@ -46,7 +46,7 @@ class TestChunkEmbedder:
         embedder = ChunkEmbedder(
             db=db,
             collection_name=collection_name,
-            qdrant_url='http://mock:6333',
+            qdrant_url=':memory:',
         )
 
         # Mock qdrant client to avoid connection error in reset_collection

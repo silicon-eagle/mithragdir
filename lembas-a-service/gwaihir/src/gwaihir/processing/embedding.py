@@ -69,7 +69,10 @@ class ChunkEmbedder:
     def qdrant_client(self) -> QdrantClient:
         """Return a lazily initialized Qdrant client."""
         if self._qdrant_client is None:
-            self._qdrant_client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key)
+            if self.qdrant_url == ':memory:':
+                self._qdrant_client = QdrantClient(location=':memory:')
+            else:
+                self._qdrant_client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key)
         return self._qdrant_client
 
     @property
@@ -138,6 +141,9 @@ class ChunkEmbedder:
                 msg = f'Error checking collection existence: {exc}'
                 logger.error(msg)
                 raise RuntimeError(msg) from exc
+        except ValueError:
+            # Local Qdrant raises ValueError if collection not found
+            pass
 
         if dense_vector_size is None:
             probe = self.encode_texts_dense(['dimension probe'])
@@ -164,6 +170,9 @@ class ChunkEmbedder:
                 msg = f'Error deleting collection {collection_name}: {exc}'
                 logger.error(msg)
                 raise RuntimeError(msg) from exc
+        except ValueError:
+            # Local Qdrant raises ValueError if collection not found
+            pass
 
         self.create_collection()
 

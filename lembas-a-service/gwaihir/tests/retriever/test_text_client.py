@@ -58,14 +58,14 @@ class TestTextClient:
         assert flushed == 0
         assert db.document_count() == 2
 
-        with db.connect() as conn:
-            book_count_row = conn.execute('SELECT COUNT(*) FROM text;').fetchone()
+        cursor = db.db.execute_sql('SELECT COUNT(*) FROM text;')
+        book_count_row = cursor.fetchone()
 
         assert book_count_row is not None
         assert int(book_count_row[0]) == 2
 
-        with db.connect() as conn:
-            row = conn.execute('SELECT author, publisher, published_year, isbn, language FROM text ORDER BY id LIMIT 1').fetchone()
+        cursor = db.db.execute_sql('SELECT author, publisher, published_year, isbn, language FROM text ORDER BY id LIMIT 1')
+        row = cursor.fetchone()
 
         assert row is not None
         assert row[0] == 'Author One'
