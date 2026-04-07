@@ -13,8 +13,9 @@ from gwaihir.processing.embedding import ChunkEmbedder
 from gwaihir.retriever.text_client import TextClient
 from gwaihir.retriever.tolkien_gateway_client import TolkienGatewayClient
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DB_PATH = PROJECT_ROOT / 'database' / 'redbook.db'
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DB_ROOT = PROJECT_ROOT.parent
+DEFAULT_DB_PATH = DB_ROOT / 'database' / 'redbook.db'
 DEFAULT_LOG_DIR = PROJECT_ROOT / '.log'
 DEFAULT_WIKI_BASE_URL = 'https://tolkiengateway.net'
 DEFAULT_TEXT_SOURCE_FOLDER = PROJECT_ROOT / 'database' / 'texts'
@@ -143,7 +144,7 @@ def cli(
     _setup_logger(level=log_level, log_dir=log_dir)
 
     selected_steps = [step.lower() for step in steps] if steps else ['read-data', 'chunk', 'encode']
-    logger.info(f'Running pipeline steps: {selected_steps}')
+    logger.info(f'Running pipeline steps: {selected_steps} with database at {db_path}')
 
     db = RedbookDatabase(db_path=db_path)
     db.deploy()

@@ -29,9 +29,8 @@ This is where you handle API processing and AI orchestration.
 * **Vector Client:** **`qdrant-client`** (Python package) to perform semantic searches.
 * **AI Orchestration:** **LangChain**. This handles the Gemini/OpenAI LLM integration, prompt building, and streaming the response back via SSE.
 
-### D. Frontend UI (SvelteKit)
-* **Framework:** **SvelteKit** (using `@sveltejs/adapter-node`).
-* **Chat Library:** **Vercel AI SDK** (`@ai-sdk/svelte`) for out-of-the-box streaming and state management.
+### D. Frontend UI (Typescript + React)
+* **Framework:** **Typescript + React** (scaffolded with Vite).
 * **Styling:** **TailwindCSS**.
 
 ---
@@ -43,15 +42,26 @@ This is where you handle API processing and AI orchestration.
 2. **Setup Databases:** Use `lembas-core` to initialize the SQLite schema (`articles` and `chunks` tables).
 3. **Scrape & Parse:** Hit the Tolkien Gateway MediaWiki API (`prop=extracts`). Extract the clean text.
 4. **Chunk & Embed:** Split the text into ~500-token chunks with ~50-token overlaps. Prepend the article title to each chunk. Send chunks to your embedding API.
+    * Use different embedding models: sparse dense and late interaction. Store the resulting vectors separately in Qdrant with metadata.
 5. **Store:** Insert the raw text/metadata into SQLite, and insert the vectors (with the SQLite `chunk.id` as the vector ID) into Qdrant.
 
 ### Phase 2: The Cirdan Backend Server (`/cirdan`)
 1. **Initialize Python Project:** Using `uv` workspace, ensure `cirdan` depends on `lembas-core`.
 2. **Setup State:** Initialize your FastAPI app and load standard configurations. Use `lembas-core` for DB connections.
-3. **Write the RAG Logic:** * Create a LangChain retriever that takes a query, embeds it, and searches Qdrant for the top 5 vector IDs.
-   * Query SQLite for the actual text content matching those 5 IDs.
-   * Combine this into a LangChain prompt template (with a Middle-earth system prompt) and pass it to the LLM.
+3. **Write the Agentic RAG Logic:** * Create a LangChain/ LangGraph retriever that takes a query, embeds it, and searches Qdrant for the top 5 vector IDs.
+    * Use self-hosted LLM for the retriever via Ollama.
+    * **Define the State:** Create a state schema (e.g., `TypedDict`) to track the current `question`, retrieved `documents`, and the overall conversation `messages`.
+    * **Create Nodes (The Actors):**
+        * *Retrieve Node:* Extracts the current question, fetches the top 5 Qdrant vectors, and overwrites the `documents` state with the results.
+        * *Grade Node:* Prompts Ollama to output a strict binary "yes/no" to evaluate if the retrieved `documents` actually contain the answer to the `question`.
+        * *Rewrite Node:* Prompts Ollama to analyze the original question and generate a better-optimized search query to replace the current `question` state.
+        * *Generate Node:* Uses Ollama to synthesize the final answer based entirely on the validated `documents` state.
+    * **Define Edges (The Logic):** * Connect `Start` -> *Retrieve*.
+        * Connect *Retrieve* -> *Grade*.
+        * Add a conditional edge from *Grade*: route to *Generate* if context is relevant, or route to *Rewrite* if irrelevant.
+        * Connect *Rewrite* -> *Retrieve* to complete the self-correction loop.
 4. **Expose the API:** Create the `POST /api/chat` FastAPI endpoint. Accept the message history, map it to the expected LangChain schema, run the RAG logic, and stream the LLM response back using FastAPI's `StreamingResponse` for SSE.
+
 
 ### Phase 3: The React Frontend (`/shire-ui`)
 1. **Scaffold:** `npm create vite@latest shire-ui -- --template react-ts`.

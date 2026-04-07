@@ -18,7 +18,6 @@ def db(tmp_path: Path) -> RedbookDatabase:
 
 
 @pytest.mark.slow
-@pytest.mark.llm
 def test_gandalf_page_full_pipeline_chunk_and_encode(db: RedbookDatabase) -> None:
     """Run a full pipeline for one Tolkien Gateway page using a temporary database."""
     client = TolkienGatewayClient(
