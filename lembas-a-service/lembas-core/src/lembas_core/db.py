@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
+import os
 from typing import Any
 
 from loguru import logger
-from peewee import SqliteDatabase
+from peewee import Database
+from playhouse.db_url import connect
 
 from lembas_core.models import (
     Chunk,
@@ -21,24 +22,24 @@ from lembas_core.schemas import Text as TextSchema
 
 
 class RedbookDatabase:
-    def __init__(self, db_path: Path = Path("storage/redbook.db")) -> None:
-        """Create a database wrapper and ensure parent directory exists.
+    def __init__(self, db_url: str | None = None) -> None:
+        """Create a PostgreSQL-backed database wrapper.
 
         Args:
-            db_path: Path to the SQLite database file.
+            db_url: Optional database URL. Supports postgres URLs such as
+                postgresql://user:password@host:5432/dbname. If omitted,
+                DATABASE_URL env var is used.
         """
-        self.db_path = db_path
-        if not self.db_path.parent.exists():
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_url = db_url or os.getenv("DATABASE_URL")
+        if not self.db_url:
+            raise ValueError("PostgreSQL DATABASE_URL is required.")
+        if not self.db_url.startswith(("postgresql://", "postgres://")):
+            raise ValueError("Only postgres URLs are supported for db_url.")
 
-        # Initialize Peewee database
-        self.db = SqliteDatabase(
-            self.db_path,
-            pragmas={
-                "foreign_keys": 1,
-                "journal_mode": "wal",
-            },
-        )
+        self.db: Database
+        self.db = connect(self.db_url)
+        logger.info("Using PostgreSQL database backend")
+
         db_proxy.initialize(self.db)
 
         # Create tables if they don't exist

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pathlib import Path
+import os
 
 import pytest
 from lembas_core.db import RedbookDatabase
@@ -12,8 +12,15 @@ from lembas_core.schemas import (
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> RedbookDatabase:
-    database = RedbookDatabase(db_path=tmp_path / "test.db")
+def db() -> RedbookDatabase:
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        pytest.skip("DATABASE_URL is required for PostgreSQL-backed tests.")
+
+    database = RedbookDatabase(db_url=db_url)
+    database.execute(
+        'TRUNCATE TABLE chunks, text, wiki_page, "index", document RESTART IDENTITY CASCADE'
+    )
     return database
 
 
@@ -196,7 +203,9 @@ class TestRedbookDatabase:
         assert db.text_exists(source_path)
         assert not db.text_exists("/tmp/missing.pdf")
 
-    def test_db_file_created(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "test.db"
-        RedbookDatabase(db_path=db_path)
-        assert db_path.exists()
+    def test_requires_postgres_database_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        with pytest.raises(ValueError, match="DATABASE_URL"):
+            RedbookDatabase()

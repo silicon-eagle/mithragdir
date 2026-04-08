@@ -1,4 +1,4 @@
-from pathlib import Path
+import os
 
 import pytest
 from gwaihir.retriever.tolkien_gateway_client import TolkienGatewayClient
@@ -8,8 +8,13 @@ from numpy import ceil
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> RedbookDatabase:
-    database = RedbookDatabase(db_path=tmp_path / 'test_client.db')
+def db() -> RedbookDatabase:
+    db_url = os.getenv('DATABASE_URL')
+    if not db_url:
+        pytest.skip('DATABASE_URL is required for PostgreSQL-backed tests.')
+
+    database = RedbookDatabase(db_url=db_url)
+    database.execute('TRUNCATE TABLE chunks, text, wiki_page, "index", document RESTART IDENTITY CASCADE')
     return database
 
 

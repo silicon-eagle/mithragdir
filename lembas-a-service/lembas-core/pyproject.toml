@@ -8,6 +8,7 @@ dependencies = [
     "pydantic",
     "loguru",
     "peewee>=3.17.0",
+    "psycopg2-binary>=2.9.10",
 ]
 
 [build-system]

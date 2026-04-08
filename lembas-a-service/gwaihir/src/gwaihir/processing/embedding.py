@@ -5,24 +5,35 @@ from collections.abc import Sequence
 from itertools import groupby
 
 import click
-from fastembed import SparseTextEmbedding
+from fastembed import LateInteractionTextEmbedding, SparseTextEmbedding
 from lembas_core.db import RedbookDatabase
 from lembas_core.models import Chunk
 from loguru import logger
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import Distance, PointStruct, SparseVector, SparseVectorParams, VectorParams
+from qdrant_client.models import (
+    Distance,
+    HnswConfigDiff,
+    MultiVectorComparator,
+    MultiVectorConfig,
+    PointStruct,
+    SparseVector,
+    SparseVectorParams,
+    VectorParams,
+)
 from sentence_transformers import SentenceTransformer
 
 DEFAULT_DENSE_MODEL = 'google/embeddinggemma-300m'
 DEFAULT_SPARSE_MODEL = 'Qdrant/bm25'
+DEFAULT_LATE_INTERACTION_MODEL = 'colbert-ir/colbertv2.0'
 DEFAULT_QDRANT_COLLECTION = 'gwaihir_chunks'
 DEFAULT_DENSE_VECTOR_NAME = 'dense'
 DEFAULT_SPARSE_VECTOR_NAME = 'sparse'
+DEFAULT_LATE_INTERACTION_VECTOR_NAME = 'late_interaction'
 
 
 class ChunkEmbedder:
-    """Simple embedder for dense, sparse (BM25), and hybrid indexing in Qdrant."""
+    """Simple embedder for dense, sparse (BM25), and late-interaction indexing in Qdrant."""
 
     def __init__(
         self,
@@ -34,6 +45,8 @@ class ChunkEmbedder:
         collection_name: str = DEFAULT_QDRANT_COLLECTION,
         qdrant_url: str | None = None,
         qdrant_api_key: str | None = None,
+        late_interaction_model_name: str = DEFAULT_LATE_INTERACTION_MODEL,
+        late_interaction_vector_name: str = DEFAULT_LATE_INTERACTION_VECTOR_NAME,
     ) -> None:
         """Initialize embedding and vector store clients.
 
@@ -48,6 +61,10 @@ class ChunkEmbedder:
                 env var.
             qdrant_api_key: Optional API key for Qdrant. If None, uses
                 `QDRANT_API_KEY` env var.
+            late_interaction_model_name: Default ColBERT-style model
+                identifier.
+            late_interaction_vector_name: Name of the late-interaction vector
+                field in Qdrant.
         """
         self.db = db
         self.dense_model_name = dense_model_name
@@ -55,6 +72,8 @@ class ChunkEmbedder:
 
         self.sparse_model_name = sparse_model_name
         self.sparse_vector_name = sparse_vector_name
+        self.late_interaction_model_name = late_interaction_model_name
+        self.late_interaction_vector_name = late_interaction_vector_name
 
         if qdrant_url is None and os.getenv('QDRANT_URL') is None:
             raise ValueError('Qdrant URL must be provided via argument or QDRANT_URL env var.')
@@ -63,6 +82,7 @@ class ChunkEmbedder:
         self.collection_name = collection_name
         self._dense_model: SentenceTransformer | None = None
         self._sparse_model: SparseTextEmbedding | None = None
+        self._late_interaction_model: LateInteractionTextEmbedding | None = None
         self._qdrant_client: QdrantClient | None = None
 
     @property
@@ -72,7 +92,7 @@ class ChunkEmbedder:
             if self.qdrant_url == ':memory:':
                 self._qdrant_client = QdrantClient(location=':memory:')
             else:
-                self._qdrant_client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key)
+                self._qdrant_client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key, timeout=60)
         return self._qdrant_client
 
     @property
@@ -90,6 +110,14 @@ class ChunkEmbedder:
             self._sparse_model = SparseTextEmbedding(model_name=self.sparse_model_name)
             logger.info(f'Loaded sparse model: {self.sparse_model_name}')
         return self._sparse_model
+
+    @property
+    def late_interaction_model(self) -> LateInteractionTextEmbedding:
+        """Return the configured late-interaction model, loading it on first use."""
+        if self._late_interaction_model is None:
+            self._late_interaction_model = LateInteractionTextEmbedding(model_name=self.late_interaction_model_name)
+            logger.info(f'Loaded late-interaction model: {self.late_interaction_model_name}')
+        return self._late_interaction_model
 
     def encode_texts_dense(
         self,
@@ -126,11 +154,24 @@ class ChunkEmbedder:
             for vector in vectors
         ]
 
+    def encode_texts_late_interaction(
+        self,
+        texts: Sequence[str],
+        batch_size: int = 32,
+    ) -> list[list[list[float]]]:
+        """Encode text strings into token-level vectors for late interaction."""
+        if not texts:
+            return []
+
+        vectors = self.late_interaction_model.embed(list(texts), batch_size=batch_size)
+        return [[[float(value) for value in token_vector] for token_vector in vector] for vector in vectors]
+
     def create_collection(
         self,
         dense_vector_size: int | None = None,
+        late_interaction_vector_size: int | None = None,
     ) -> None:
-        """Ensure Qdrant collection exists in dense or hybrid mode."""
+        """Ensure Qdrant collection exists for dense, sparse, and late-interaction retrieval."""
         collection_name = self.collection_name
         try:
             self.qdrant_client.get_collection(collection_name=collection_name)
@@ -152,9 +193,25 @@ class ChunkEmbedder:
                 raise RuntimeError(msg)
             dense_vector_size = len(probe[0])
 
+        vectors_config: dict[str, VectorParams] = {self.dense_vector_name: VectorParams(size=dense_vector_size, distance=Distance.COSINE)}
+
+        if late_interaction_vector_size is None:
+            late_probe = self.encode_texts_late_interaction(['dimension probe'])
+            if not late_probe or not late_probe[0]:
+                msg = 'Could not infer vector size from late-interaction model.'
+                raise RuntimeError(msg)
+            late_interaction_vector_size = len(late_probe[0][0])
+
+        vectors_config[self.late_interaction_vector_name] = VectorParams(
+            size=late_interaction_vector_size,
+            distance=Distance.COSINE,
+            multivector_config=MultiVectorConfig(comparator=MultiVectorComparator.MAX_SIM),
+            hnsw_config=HnswConfigDiff(m=0),
+        )
+
         self.qdrant_client.create_collection(
             collection_name=collection_name,
-            vectors_config={self.dense_vector_name: VectorParams(size=dense_vector_size, distance=Distance.COSINE)},
+            vectors_config=vectors_config,
             sparse_vectors_config={self.sparse_vector_name: SparseVectorParams(modifier=models.Modifier.IDF)},
         )
         return
@@ -182,7 +239,7 @@ class ChunkEmbedder:
         batch_size: int = 32,
         show_progress: bool = True,
     ) -> int:
-        """Read DB chunks, encode dense+sparse vectors, and upsert hybrid points.
+        """Read DB chunks, encode retrieval vectors, and upsert points.
 
         Args:
             document_id: Optional document id filter.
@@ -213,17 +270,22 @@ class ChunkEmbedder:
                 texts=[chunk.content for chunk in document_chunks],
                 batch_size=batch_size,
             )
+            late_interaction_vectors = self.encode_texts_late_interaction(
+                texts=[chunk.content for chunk in document_chunks],
+                batch_size=batch_size,
+            )
 
             points = [
                 PointStruct(
                     id=chunk.id,
                     vector={
-                        self.dense_vector_name: dense_vector,
-                        self.sparse_vector_name: sparse_vector,
+                        self.dense_vector_name: dense_vectors[index],
+                        self.sparse_vector_name: sparse_vectors[index],
+                        self.late_interaction_vector_name: late_interaction_vectors[index],
                     },
                     payload=chunk.build_metadata_payload(),
                 )
-                for chunk, dense_vector, sparse_vector in zip(document_chunks, dense_vectors, sparse_vectors, strict=True)
+                for index, chunk in enumerate(document_chunks)
             ]
 
             # Avoid exceeding Qdrant request-size limits by upserting in slices.

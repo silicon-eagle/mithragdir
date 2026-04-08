@@ -1,17 +1,34 @@
 from datetime import datetime
+import json
 from peewee import (
     AutoField,
     CharField,
     DateTimeField,
+    Field,
     ForeignKeyField,
     IntegerField,
     Model,
     Proxy,
     TextField,
 )
-from playhouse.sqlite_ext import JSONField
 
 database = Proxy()
+
+
+class JsonField(Field):
+    field_type = "JSON"
+
+    def db_value(self, value):
+        if value is None:
+            return None
+        return json.dumps(value)
+
+    def python_value(self, value):
+        if value is None:
+            return None
+        if isinstance(value, (dict, list)):
+            return value
+        return json.loads(value)
 
 
 class BaseModel(Model):
@@ -39,14 +56,14 @@ class Index(BaseModel):
 class WikiPage(BaseModel):
     document = ForeignKeyField(Document, backref="wiki_page")
     page_id = IntegerField()
-    categories = JSONField(default=[])
-    images = JSONField(default=[])
-    links = JSONField(default=[])
-    external_links = JSONField(default=[])
-    sections = JSONField(default=[])
+    categories = JsonField(default=list)
+    images = JsonField(default=list)
+    links = JsonField(default=list)
+    external_links = JsonField(default=list)
+    sections = JsonField(default=list)
     revid = IntegerField(null=True)
     displaytitle = CharField(null=True)
-    properties = JSONField(default=[])
+    properties = JsonField(default=list)
 
     class Meta:
         table_name = "wiki_page"
@@ -71,7 +88,7 @@ class Chunk(BaseModel):
     chunk_index = IntegerField()
     content = TextField()
     token_count = IntegerField()
-    meta_data = JSONField(null=True)
+    meta_data = JsonField(null=True)
     created_at = DateTimeField(default=datetime.now)
 
     class Meta:
