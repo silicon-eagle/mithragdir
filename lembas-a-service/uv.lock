@@ -1248,18 +1248,22 @@ name = "lembas-core"
 version = "0.1.0"
 source = { editable = "lembas-core" }
 dependencies = [
+    { name = "click" },
     { name = "loguru" },
     { name = "peewee" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.3.0" },
     { name = "loguru" },
     { name = "peewee", specifier = ">=3.17.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic" },
+    { name = "python-dotenv", specifier = ">=1.2.1" },
 ]
 
 [[package]]

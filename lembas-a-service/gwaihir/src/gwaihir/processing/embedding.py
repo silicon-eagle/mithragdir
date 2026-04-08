@@ -44,7 +44,6 @@ class ChunkEmbedder:
         sparse_vector_name: str = DEFAULT_SPARSE_VECTOR_NAME,
         collection_name: str = DEFAULT_QDRANT_COLLECTION,
         qdrant_url: str | None = None,
-        qdrant_api_key: str | None = None,
         late_interaction_model_name: str = DEFAULT_LATE_INTERACTION_MODEL,
         late_interaction_vector_name: str = DEFAULT_LATE_INTERACTION_VECTOR_NAME,
     ) -> None:
@@ -57,10 +56,8 @@ class ChunkEmbedder:
             sparse_model_name: Default sparse model identifier.
             sparse_vector_name: Name of the sparse vector field in Qdrant.
             collection_name: Qdrant collection name for stored chunk vectors.
-            qdrant_url: Qdrant HTTP endpoint. If None, uses `QDRANT_URL`
+            qdrant_url: Qdrant HTTP endpoint. If None, uses `PRD_QDRANT_URL`
                 env var.
-            qdrant_api_key: Optional API key for Qdrant. If None, uses
-                `QDRANT_API_KEY` env var.
             late_interaction_model_name: Default ColBERT-style model
                 identifier.
             late_interaction_vector_name: Name of the late-interaction vector
@@ -72,13 +69,13 @@ class ChunkEmbedder:
 
         self.sparse_model_name = sparse_model_name
         self.sparse_vector_name = sparse_vector_name
+
         self.late_interaction_model_name = late_interaction_model_name
         self.late_interaction_vector_name = late_interaction_vector_name
 
-        if qdrant_url is None and os.getenv('QDRANT_URL') is None:
-            raise ValueError('Qdrant URL must be provided via argument or QDRANT_URL env var.')
-        self.qdrant_url = qdrant_url or os.getenv('QDRANT_URL')
-        self.qdrant_api_key = qdrant_api_key or os.getenv('QDRANT_API_KEY')
+        if qdrant_url is None and os.getenv('PRD_QDRANT_URL') is None:
+            raise ValueError('Qdrant URL must be provided via argument or PRD_QDRANT_URL env var.')
+        self.qdrant_url = qdrant_url or os.getenv('PRD_QDRANT_URL')
         self.collection_name = collection_name
         self._dense_model: SentenceTransformer | None = None
         self._sparse_model: SparseTextEmbedding | None = None
@@ -92,7 +89,7 @@ class ChunkEmbedder:
             if self.qdrant_url == ':memory:':
                 self._qdrant_client = QdrantClient(location=':memory:')
             else:
-                self._qdrant_client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key, timeout=60)
+                self._qdrant_client = QdrantClient(url=self.qdrant_url, timeout=60)
         return self._qdrant_client
 
     @property

@@ -1,21 +1,40 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: redbook-postgress
+  postgres-prd:
+    image: postgres:latest
+    container_name: redbook-postgress-prd
     restart: unless-stopped
     environment:
-      POSTGRES_DB: redbook
+      POSTGRES_DB: redbook_prd
       POSTGRES_USER: redbook
       POSTGRES_PASSWORD: redbook
     ports:
       - '5432:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_prd_data:/var/lib/postgresql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U redbook -d redbook']
+      test: ['CMD-SHELL', 'pg_isready -U redbook -d redbook_prd']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-dev:
+    image: postgres:latest
+    container_name: redbook-postgress-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: redbook_dev
+      POSTGRES_USER: redbook
+      POSTGRES_PASSWORD: redbook
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U redbook -d redbook_dev']
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  postgres_data:
+  postgres_prd_data:
+  postgres_dev_data:

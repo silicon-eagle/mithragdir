@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -51,7 +52,7 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
 
 
 @click.group()
-@click.option('--db-url', default=None, envvar='DATABASE_URL', help='Postgres database URL. Can also be set via DATABASE_URL.')
+@click.option('--db-url', default=None, envvar='PRD_DATABASE_URL', help='Postgres database URL. Defaults to PRD_DATABASE_URL.')
 @click.option('--log-level', default='INFO', show_default=True)
 @click.option('--log-dir', type=click.Path(path_type=Path), default=DEFAULT_LOG_DIR, show_default=True)
 @click.pass_context
@@ -60,22 +61,24 @@ def cli(ctx: click.Context, db_url: str | None, log_level: str, log_dir: Path) -
     load_dotenv(dotenv_path=PROJECT_ROOT / '.env')
     _setup_logger(level=log_level, log_dir=log_dir)
 
+    resolved_db_url = db_url or os.getenv('PRD_DATABASE_URL')
+
     ctx.ensure_object(dict)
-    ctx.obj['db_url'] = db_url
-    ctx.obj['db'] = RedbookDatabase(db_url=db_url)
+    ctx.obj['db_url'] = resolved_db_url
+    ctx.obj['db'] = RedbookDatabase(db_url=resolved_db_url)
     ctx.obj['db'].deploy()
 
     # Display database connection info to terminal
-    if db_url:
+    if resolved_db_url:
         # Parse and show host/database from URL.
-        parsed = urlparse(db_url)
+        parsed = urlparse(resolved_db_url)
         db_name = parsed.path.lstrip('/')
         if parsed.hostname and parsed.port and db_name:
             click.echo(f'Database: {parsed.hostname}:{parsed.port}/{db_name}', err=True)
         else:
             click.echo('Database connected via --db-url', err=True)
     else:
-        click.echo('Database connected via DATABASE_URL environment variable', err=True)
+        click.echo('Database connected via PRD_DATABASE_URL environment variable', err=True)
 
 
 @cli.command(name='wiki')
@@ -167,8 +170,7 @@ def wiki_cmd(
 @click.option('--chunk-tokenizer-name', default=DEFAULT_CHUNK_TOKENIZER_NAME, show_default=True)
 @click.option('--encode-document-id', type=int, default=None, help='Optional document_id filter when encoding chunks.')
 @click.option('--encode-batch-size', default=32, type=int, show_default=True)
-@click.option('--qdrant-url', default=None, help='Qdrant URL. If omitted, QDRANT_URL env var is used.')
-@click.option('--qdrant-api-key', default=None, help='Optional Qdrant API key. If omitted, QDRANT_API_KEY env var is used.')
+@click.option('--qdrant-url', default=None, envvar='PRD_QDRANT_URL', help='Qdrant URL. Defaults to PRD_QDRANT_URL.')
 @click.option('--qdrant-collection-name', default='gwaihir_chunks', show_default=True)
 @click.option('--dense-model-name', default='google/embeddinggemma-300m', show_default=True)
 @click.option('--sparse-model-name', default='Qdrant/bm25', show_default=True)
@@ -187,7 +189,6 @@ def pipeline_cmd(
     encode_document_id: int | None,
     encode_batch_size: int,
     qdrant_url: str | None,
-    qdrant_api_key: str | None,
     qdrant_collection_name: str,
     dense_model_name: str,
     sparse_model_name: str,
@@ -220,7 +221,6 @@ def pipeline_cmd(
             sparse_vector_name=sparse_vector_name,
             collection_name=qdrant_collection_name,
             qdrant_url=qdrant_url,
-            qdrant_api_key=qdrant_api_key,
         )
         embedder.reset_collection()
         click.echo(f'Cleared embeddings in qdrant collection {qdrant_collection_name}', err=True)
@@ -245,7 +245,6 @@ def pipeline_cmd(
             sparse_vector_name=sparse_vector_name,
             collection_name=qdrant_collection_name,
             qdrant_url=qdrant_url,
-            qdrant_api_key=qdrant_api_key,
         )
         upserted = embedder.encode_and_upsert_hybrid_chunks(
             document_id=encode_document_id,

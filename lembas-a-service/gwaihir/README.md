@@ -62,7 +62,6 @@ Common options:
 - `--clear/--no-clear`: clear PostgreSQL chunks and reset Qdrant collection
 - `--run/--no-run`: run chunking and embedding pipeline
 - `--qdrant-url`: Qdrant endpoint (can also be set via `QDRANT_URL`)
-- `--qdrant-api-key`: optional API key (can also be set via `QDRANT_API_KEY`)
 - `--progress/--no-progress`: Show progress output
 
 Show all pipeline options:

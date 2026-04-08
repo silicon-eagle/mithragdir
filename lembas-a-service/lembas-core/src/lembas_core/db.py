@@ -258,6 +258,16 @@ class RedbookDatabase:
         """
         pass
 
+    def delete_all_tables(self) -> None:
+        """Delete all known application tables."""
+        with self.db.atomic():
+            self.db.execute_sql("DROP TABLE IF EXISTS chunks CASCADE")
+            self.db.execute_sql("DROP TABLE IF EXISTS text CASCADE")
+            self.db.execute_sql("DROP TABLE IF EXISTS wiki_page CASCADE")
+            # "index" is quoted because INDEX is a SQL keyword.
+            self.db.execute_sql('DROP TABLE IF EXISTS "index" CASCADE')
+            self.db.execute_sql("DROP TABLE IF EXISTS document CASCADE")
+
     def close(self) -> None:
         """Close the database connection."""
         if not self.db.is_closed():

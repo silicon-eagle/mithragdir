@@ -48,13 +48,13 @@ See [gwaihir/README.md](gwaihir/README.md) for detailed CLI documentation.
 
 ## Database
 
-- **Backend:** PostgreSQL 16-Alpine
+- **Backend:** PostgreSQL (latest)
 - **ORM:** Peewee
 - **Container:** `redbook-postgress` (via `docker-compose.postgres.yml`)
 
 ## Vector Store
 
-- **Backend:** Qdrant v1.17.0
+- **Backend:** Qdrant (latest)
 - **Collection:** `gwaihir_chunks` (hybrid: dense + sparse)
 - **Container:** `redbook-qdrant` (via `docker-compose.qdrant.yml`)
 

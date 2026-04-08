@@ -6,33 +6,40 @@ import uuid
 import pytest
 from gwaihir.processing.chunker import Chunker
 from gwaihir.processing.embedding import ChunkEmbedder
-from gwaihir.retriever.tolkien_gateway_client import TolkienGatewayClient
 from lembas_core.db import RedbookDatabase
+from lembas_core.schemas import Page
 from qdrant_client import models as qdrant_models
 
 
 @pytest.fixture
 def db() -> RedbookDatabase:
-    db_url = os.getenv('DATABASE_URL')
+    db_url = os.getenv('DEV_DATABASE_URL')
     if not db_url:
-        pytest.skip('DATABASE_URL is required for PostgreSQL-backed tests.')
+        pytest.skip('DEV_DATABASE_URL is required for PostgreSQL-backed tests.')
 
     database = RedbookDatabase(db_url=db_url)
     database.execute('TRUNCATE TABLE chunks, text, wiki_page, "index", document RESTART IDENTITY CASCADE')
     return database
 
 
-@pytest.mark.slow
 def test_gandalf_page_full_pipeline_chunk_and_encode(db: RedbookDatabase) -> None:
     """Run a full pipeline for one Tolkien Gateway page using a temporary database."""
-    client = TolkienGatewayClient(
-        base_url='https://tolkiengateway.net',
-        db=db,
-        batch_size=1,
-        timeout_seconds=30,
-    )
+    qdrant_url = os.getenv('DEV_QDRANT_URL')
+    if not qdrant_url:
+        pytest.skip('DEV_QDRANT_URL is required for integration tests.')
 
-    page = client.get_page('Gandalf')
+    page = Page(
+        title='Gandalf',
+        url='https://tolkiengateway.net/wiki/Gandalf',
+        pageid=123456,
+        content=(
+            '<div id="mw-content-text">'
+            '<h2>Gandalf</h2>'
+            '<p>Gandalf was a wizard of Middle-earth.</p>'
+            '<p>He was a member of the Fellowship of the Ring.</p>'
+            '</div>'
+        ),
+    )
     document_id = db.insert_document(page)
 
     assert document_id > 0
@@ -51,7 +58,7 @@ def test_gandalf_page_full_pipeline_chunk_and_encode(db: RedbookDatabase) -> Non
     assert chunks[0].content
 
     collection_name = f'gwaihir_integration_{uuid.uuid4().hex[:8]}'
-    embedder = ChunkEmbedder(db=db, collection_name=collection_name)
+    embedder = ChunkEmbedder(db=db, collection_name=collection_name, qdrant_url=qdrant_url)
 
     try:
         upserted_points = embedder.encode_and_upsert_hybrid_chunks(
@@ -94,7 +101,7 @@ def test_gandalf_page_full_pipeline_chunk_and_encode(db: RedbookDatabase) -> Non
         payload = points[0].payload
         assert payload is not None
         assert payload['document_id'] == document_id
-        assert isinstance(payload['meta_data'], dict)
-        assert payload['meta_data']['content_type'] == 'html'
+        assert payload['content_type'] == 'html'
+        assert payload['chunk_method'] == 'html_cleaned_recursive_character'
     finally:
         embedder.qdrant_client.delete_collection(collection_name=collection_name)

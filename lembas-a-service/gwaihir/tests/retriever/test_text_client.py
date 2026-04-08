@@ -8,9 +8,9 @@ from lembas_core.db import RedbookDatabase
 
 @pytest.fixture
 def db() -> RedbookDatabase:
-    db_url = os.getenv('DATABASE_URL')
+    db_url = os.getenv('DEV_DATABASE_URL')
     if not db_url:
-        pytest.skip('DATABASE_URL is required for PostgreSQL-backed tests.')
+        pytest.skip('DEV_DATABASE_URL is required for PostgreSQL-backed tests.')
 
     database = RedbookDatabase(db_url=db_url)
     database.execute('TRUNCATE TABLE chunks, text, wiki_page, "index", document RESTART IDENTITY CASCADE')
