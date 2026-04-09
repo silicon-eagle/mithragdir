@@ -24,7 +24,7 @@ dependencies = [
 gndlf-core = { workspace = true }
 
 [project.scripts]
-workflow = 'workflow.main:main'
+gndlf-workflow = 'workflow.main:main'
 
 [dependency-groups]
 dev = [

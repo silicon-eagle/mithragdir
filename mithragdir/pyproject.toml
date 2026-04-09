@@ -2,9 +2,9 @@
 members = ["gndlf-workflow", "gndlf-pipeline", "gndlf-core"]
 
 [project]
-name = "lembas-a-service"
+name = "mithragdir"
 version = "0.1.0"
-description = "Monorepo for Lembas Service"
+description = "Monorepo for Mithragdir"
 requires-python = ">=3.13"
 dependencies = [
     "gndlf-workflow",

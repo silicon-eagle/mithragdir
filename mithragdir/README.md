@@ -1,14 +1,16 @@
-# Lembas: A Service
+# Mithragdir
 
 A Tolkien knowledge base service that ingests wiki data, chunks it, and generates hybrid embeddings for semantic search.
 
 ## Project Structure
 
+- **[gndlf-core/](gndlf-core/)** — Shared database models and utilities
+  - `init-db` command: Initialize database schema
+  - `delete-db` command: Remove database tables
 - **[gndlf-pipeline/](gndlf-pipeline/)** — CLI tools for data ingestion, chunking, and embedding
   - `wiki` command: Crawl Tolkien Gateway and ingest text sources
-   - `pipeline` command: Clear and/or run chunking + embedding
-- **gndlf-core/** — Shared database models and utilities
-- **gndlf-workflow/** — Retrieval and search service (coming soon)
+  - `pipeline` command: Clear and/or run chunking + embedding
+- **[gndlf-workflow/](gndlf-workflow/)** — FastAPI retrieval and search service (coming soon)
 
 ## Quick Start
 
@@ -29,15 +31,24 @@ A Tolkien knowledge base service that ingests wiki data, chunks it, and generate
    export QDRANT_URL=http://localhost:6333
    ```
 
-4. **Run the pipeline (three steps):**
+4. **Initialize database:**
    ```bash
-   # 1. Crawl wiki and ingest text data
+   # Initialize database schema
+   uv run gndlf-core init-db
+
+   # Or target specific environment
+   uv run gndlf-core init-db --target dev
+   ```
+
+5. **Run the pipeline (three sub-steps):**
+   ```bash
+   # 5a. Crawl wiki and ingest text data
    uv run gndlf-pipeline wiki
 
-   # 2. Clear old chunks/embeddings (optional)
+   # 5b. Clear old chunks/embeddings (optional)
    uv run gndlf-pipeline pipeline --clear
 
-   # 3. Chunk + embed
+   # 5c. Chunk + embed
    uv run gndlf-pipeline pipeline --run
 
    # (Or clear and rebuild in one command)
@@ -48,13 +59,36 @@ See [gndlf-pipeline/README.md](gndlf-pipeline/README.md) for detailed CLI docume
 
 ## Database
 
-- **Backend:** PostgreSQL (latest)
+- **Backend:** PostgreSQL
 - **ORM:** Peewee
 - **Container:** `redbook-postgress` (via `docker-compose.postgres.yml`)
 
+### Database Commands
+
+Initialize database schema (required before running the pipeline):
+
+```bash
+uv run gndlf-core init-db
+```
+
+Initialize for a specific environment:
+
+```bash
+uv run gndlf-core init-db --target dev
+uv run gndlf-core init-db --target prd
+```
+
+Remove all database tables:
+
+```bash
+uv run gndlf-core delete-db
+```
+
+See [gndlf-core/README.md](gndlf-core/README.md) for full database documentation.
+
 ## Vector Store
 
-- **Backend:** Qdrant (latest)
+- **Backend:** Qdrant
 - **Collection:** `gwaihir_chunks` (hybrid: dense + sparse)
 - **Container:** `redbook-qdrant` (via `docker-compose.qdrant.yml`)
 

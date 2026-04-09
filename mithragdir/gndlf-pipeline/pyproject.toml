@@ -29,7 +29,7 @@ dependencies = [
 gndlf-core = { workspace = true }
 
 [project.scripts]
-pipeline = 'pipeline.main:cli'
+gndlf-pipeline = 'pipeline.main:cli'
 
 [dependency-groups]
 dev = [

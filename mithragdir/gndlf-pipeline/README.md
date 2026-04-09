@@ -1,4 +1,4 @@
-# Gwaihir
+# Gndlf Pipeline
 
 Minimal tools for crawling Tolkien Gateway pages and storing them locally.
 
@@ -15,7 +15,7 @@ The CLI provides two subcommands for different stages of the pipeline:
 Show available commands:
 
 ```bash
-uv run pipeline --help
+uv run gndlf-pipeline --help
 ```
 
 ### Crawl Wiki and Text Data
@@ -23,7 +23,7 @@ uv run pipeline --help
 Ingest wiki pages and text data into PostgreSQL:
 
 ```bash
-uv run pipeline wiki
+uv run gndlf-pipeline wiki
 ```
 
 Common options:
@@ -37,7 +37,7 @@ Common options:
 Show all wiki options:
 
 ```bash
-uv run pipeline wiki --help
+uv run gndlf-pipeline wiki --help
 ```
 
 ### Pipeline (Clear and/or Run)
@@ -46,13 +46,13 @@ Use one command for both clearing and execution:
 
 ```bash
 # Clear chunks + embeddings only
-uv run pipeline pipeline --clear
+uv run gndlf-pipeline pipeline --clear
 
 # Run chunk + embed pipeline only
-uv run pipeline pipeline --run
+uv run gndlf-pipeline pipeline --run
 
 # Clear first, then run
-uv run pipeline pipeline --clear --run
+uv run gndlf-pipeline pipeline --clear --run
 ```
 
 Common options:
@@ -67,7 +67,7 @@ Common options:
 Show all pipeline options:
 
 ```bash
-uv run pipeline pipeline --help
+uv run gndlf-pipeline pipeline --help
 ```
 
 ### Global Options
@@ -81,7 +81,7 @@ Global options apply to all commands and are specified before the subcommand:
 Example:
 
 ```bash
-uv run pipeline --db-url postgresql://redbook:redbook@localhost:5432/redbook wiki
+uv run gndlf-pipeline --db-url postgresql://redbook:redbook@localhost:5432/redbook wiki
 ```
 
 ## Run with PostgreSQL (Docker)
@@ -116,13 +116,13 @@ Run pipeline with local PostgreSQL and Qdrant:
 
 ```bash
 export DATABASE_URL=postgresql://redbook:redbook@localhost:5432/redbook
-uv run pipeline pipeline
+uv run gndlf-pipeline pipeline
 ```
 
 Or pass the URL directly:
 
 ```bash
-uv run pipeline --db-url postgresql://redbook:redbook@localhost:5432/redbook pipeline
+uv run gndlf-pipeline --db-url postgresql://redbook:redbook@localhost:5432/redbook pipeline
 ```
 
 ## Embedding model auth (Hugging Face)
