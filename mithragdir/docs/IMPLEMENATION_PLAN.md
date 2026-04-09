@@ -18,7 +18,7 @@ Python handles all the messy string manipulation and data preparation.
 * **Database Clients:** Standard `sqlite3` for local text storage and `qdrant-client` for pushing vectors.
 
 ### B. Storage Layer (Shared)
-* **Shared Library:** **lembas-core**. Contains shared database connection logic and Pydantic models (e.g., `Chunk`) to ensure consistency between pipeline and backend.
+* **Shared Library:** **gndlf-core**. Contains shared database connection logic and Pydantic models (e.g., `Chunk`) to ensure consistency between pipeline and backend.
 * **Relational Database:** **SQLite**. The Python script creates a `redbook.db` file containing `articles` and `chunks` tables. The FastAPI backend reads from this exact same file.
 * **Vector Store:** **Qdrant** (running via Docker). Python inserts the vectors, and the FastAPI backend queries them.
 
@@ -37,17 +37,17 @@ This is where you handle API processing and AI orchestration.
 
 ## 3. Step-by-Step Implementation Plan
 
-### Phase 1: The Gwaihir Data Pipeline (`/gwaihir`)
+### Phase 1: The Gwaihir Data Pipeline (`/gndlf-pipeline`)
 1. **Initialize Environment:** Configure `uv` workspace and dependencies.
-2. **Setup Databases:** Use `lembas-core` to initialize the SQLite schema (`articles` and `chunks` tables).
+2. **Setup Databases:** Use `gndlf-core` to initialize the SQLite schema (`articles` and `chunks` tables).
 3. **Scrape & Parse:** Hit the Tolkien Gateway MediaWiki API (`prop=extracts`). Extract the clean text.
 4. **Chunk & Embed:** Split the text into ~500-token chunks with ~50-token overlaps. Prepend the article title to each chunk. Send chunks to your embedding API.
     * Use different embedding models: sparse dense and late interaction. Store the resulting vectors separately in Qdrant with metadata.
 5. **Store:** Insert the raw text/metadata into SQLite, and insert the vectors (with the SQLite `chunk.id` as the vector ID) into Qdrant.
 
-### Phase 2: The Cirdan Backend Server (`/cirdan`)
-1. **Initialize Python Project:** Using `uv` workspace, ensure `cirdan` depends on `lembas-core`.
-2. **Setup State:** Initialize your FastAPI app and load standard configurations. Use `lembas-core` for DB connections.
+### Phase 2: The Cirdan Backend Server (`/gndlf-workflow`)
+1. **Initialize Python Project:** Using `uv` workspace, ensure `gndlf-workflow` depends on `gndlf-core`.
+2. **Setup State:** Initialize your FastAPI app and load standard configurations. Use `gndlf-core` for DB connections.
 3. **Write the Agentic RAG Logic:** * Create a LangChain/ LangGraph retriever that takes a query, embeds it, and searches Qdrant for the top 5 vector IDs.
     * Use self-hosted LLM for the retriever via Ollama.
     * **Define the State:** Create a state schema (e.g., `TypedDict`) to track the current `question`, retrieved `documents`, and the overall conversation `messages`.
@@ -78,21 +78,21 @@ lembas-service/
 ├── .env                       # Shared environment variables
 ├── docker-compose.yml         # Runs Qdrant, Cirdan, and Frontend
 │
-├── lembas-core/               # Shared Python Library
+├── gndlf-core/               # Shared Python Library
 │   ├── pyproject.toml
-│   └── src/lembas_core/
+│   └── src/core/
 │       ├── db.py              # Shared SQLite connection logic
 │       └── models.py          # Shared Pydantic models
 │
-├── gwaihir/                   # Data Pipeline
-│   ├── pyproject.toml         # Depends on lembas-core
+├── gndlf-pipeline/                   # Data Pipeline
+│   ├── pyproject.toml         # Depends on gndlf-core
 │   ├── tolkien.db             # Generated SQLite file
-│   └── gwaihir/               # Ingestion logic
+│   └── src/pipeline/          # Ingestion logic
 │
-├── cirdan/                    # FastAPI Web API Project
-│   ├── pyproject.toml         # Depends on lembas-core
+├── gndlf-workflow/                    # FastAPI Web API Project
+│   ├── pyproject.toml         # Depends on gndlf-core
 │   ├── main.py                # FastAPI server and endpoints
-│   └── cirdan/
+│   └── src/workflow/
 │
 └── frontend/                  # SvelteKit Application
     ├── package.json

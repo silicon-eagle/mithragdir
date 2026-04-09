@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from loguru import logger
-from lembas_core.setup_logger import setup_logger
+from core.setup_logger import setup_logger
 
 
 def _setup_logger() -> None:

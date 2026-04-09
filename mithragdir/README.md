@@ -4,11 +4,11 @@ A Tolkien knowledge base service that ingests wiki data, chunks it, and generate
 
 ## Project Structure
 
-- **[gwaihir/](gwaihir/)** — CLI tools for data ingestion, chunking, and embedding
+- **[gndlf-pipeline/](gndlf-pipeline/)** — CLI tools for data ingestion, chunking, and embedding
   - `wiki` command: Crawl Tolkien Gateway and ingest text sources
    - `pipeline` command: Clear and/or run chunking + embedding
-- **lembas-core/** — Shared database models and utilities
-- **cirdan/** — Retrieval and search service (coming soon)
+- **gndlf-core/** — Shared database models and utilities
+- **gndlf-workflow/** — Retrieval and search service (coming soon)
 
 ## Quick Start
 
@@ -32,19 +32,19 @@ A Tolkien knowledge base service that ingests wiki data, chunks it, and generate
 4. **Run the pipeline (three steps):**
    ```bash
    # 1. Crawl wiki and ingest text data
-   uv run gwaihir wiki
+   uv run gndlf-pipeline wiki
 
    # 2. Clear old chunks/embeddings (optional)
-   uv run gwaihir pipeline --clear
+   uv run gndlf-pipeline pipeline --clear
 
    # 3. Chunk + embed
-   uv run gwaihir pipeline --run
+   uv run gndlf-pipeline pipeline --run
 
    # (Or clear and rebuild in one command)
-   uv run gwaihir pipeline --clear --run
+   uv run gndlf-pipeline pipeline --clear --run
    ```
 
-See [gwaihir/README.md](gwaihir/README.md) for detailed CLI documentation.
+See [gndlf-pipeline/README.md](gndlf-pipeline/README.md) for detailed CLI documentation.
 
 ## Database
 
@@ -67,4 +67,4 @@ uv run huggingface-cli login
 # or export HF_TOKEN=<your_token>
 ```
 
-See [gwaihir/README.md](gwaihir/README.md) for full setup details.
+See [gndlf-pipeline/README.md](gndlf-pipeline/README.md) for full setup details.
