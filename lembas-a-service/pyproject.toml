@@ -1,0 +1,24 @@
+[tool.uv.workspace]
+members = ["cirdan", "gwaihir", "lembas-core"]
+
+[project]
+name = "lembas-a-service"
+version = "0.1.0"
+description = "Monorepo for Lembas Service"
+requires-python = ">=3.13"
+dependencies = [
+    "cirdan",
+    "gwaihir",
+    "lembas-core",
+]
+
+[tool.uv.sources]
+cirdan = { workspace = true }
+gwaihir = { workspace = true }
+lembas-core = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]

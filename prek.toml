@@ -1,0 +1,32 @@
+default_language_version.python = "python3.13"
+
+[[repos]]
+repo = "builtin"
+hooks = [
+	{ id = "check-added-large-files", args = ["--maxkb=2048"] },
+	{ id = "end-of-file-fixer" },
+	{ id = "mixed-line-ending" },
+	{ id = "check-json" },
+	{ id = "check-toml" },
+	{ id = "check-yaml" },
+	{ id = "detect-private-key" },
+	{ id = "trailing-whitespace" },
+	{ id = "no-commit-to-branch", args = ["--branch=main"] },
+]
+
+[[repos]]
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.14.11"
+hooks = [
+	{
+		id = "ruff-check",
+		name = "ruff (linting)",
+		types_or = ["python", "pyi"],
+		args = ["--fix"],
+	},
+	{
+		id = "ruff-format",
+		name = "ruff (formatting)",
+		types_or = ["python", "pyi"],
+	},
+]

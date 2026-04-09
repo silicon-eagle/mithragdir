@@ -1,0 +1,64 @@
+# Lembas Core
+
+Shared library for Lembas Service and Gwaihir Pipeline.
+
+## CLI
+
+`lembas-core` includes a small Click CLI for database lifecycle tasks.
+
+Show commands:
+
+```bash
+uv run lembas-core --help
+```
+
+### Initialize Database
+
+Uses `--target` with env vars from `.env`:
+- `--target prd` -> `PRD_DATABASE_URL`
+- `--target dev` -> `DEV_DATABASE_URL`
+
+```bash
+uv run lembas-core init-db
+```
+
+Explicit target example:
+
+```bash
+uv run lembas-core init-db \
+	--target dev
+```
+
+### Delete Database
+
+Deletes all app tables (`document`, `index`, `wiki_page`, `text`, `chunks`).
+
+```bash
+uv run lembas-core delete-db
+```
+
+## Examples: PRD and DEV
+
+### Deploy PRD database tables
+
+```bash
+uv run lembas-core init-db --target prd
+```
+
+### Deploy DEV database tables
+
+```bash
+uv run lembas-core init-db --target dev
+```
+
+### Remove PRD database tables
+
+```bash
+uv run lembas-core delete-db --target prd
+```
+
+### Remove DEV database tables
+
+```bash
+uv run lembas-core delete-db --target dev
+```
