@@ -30,6 +30,8 @@ DEFAULT_QDRANT_COLLECTION = 'gwaihir_chunks'
 DEFAULT_DENSE_VECTOR_NAME = 'dense'
 DEFAULT_SPARSE_VECTOR_NAME = 'sparse'
 DEFAULT_LATE_INTERACTION_VECTOR_NAME = 'late_interaction'
+DEFAULT_QDRANT_TIMEOUT_SECONDS = 300
+DEFAULT_UPSERT_SLICE_SIZE = 8
 
 
 class ChunkEmbedder:
@@ -89,7 +91,7 @@ class ChunkEmbedder:
             if self.qdrant_url == ':memory:':
                 self._qdrant_client = QdrantClient(location=':memory:')
             else:
-                self._qdrant_client = QdrantClient(url=self.qdrant_url, timeout=60)
+                self._qdrant_client = QdrantClient(url=self.qdrant_url, timeout=DEFAULT_QDRANT_TIMEOUT_SECONDS)
         return self._qdrant_client
 
     @property
@@ -285,9 +287,10 @@ class ChunkEmbedder:
                 for index, chunk in enumerate(document_chunks)
             ]
 
-            # Avoid exceeding Qdrant request-size limits by upserting in slices.
-            for start in range(0, len(points), batch_size):
-                point_batch = points[start : start + batch_size]
+            # Keep each upsert request small to reduce timeout risk on large runs.
+            upsert_slice_size = min(batch_size, DEFAULT_UPSERT_SLICE_SIZE)
+            for start in range(0, len(points), upsert_slice_size):
+                point_batch = points[start : start + upsert_slice_size]
                 self.qdrant_client.upsert(collection_name=self.collection_name, points=point_batch)
             return len(points)
 
