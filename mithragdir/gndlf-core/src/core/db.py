@@ -1,23 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 import os
+from collections.abc import Sequence
 from typing import Any
 
 from loguru import logger
-from peewee import Database
+from peewee import Database, PeeweeException
 from playhouse.db_url import connect
 
 from core.models import (
     Chunk,
     Document,
-    Index,
+    PageIndex,
     Text,
     WikiPage,
+)
+from core.models import (
     database as db_proxy,
 )
-from core.schemas import Index as IndexSchema
 from core.schemas import Page as PageSchema
+from core.schemas import PageIndex as IndexSchema
 from core.schemas import Text as TextSchema
 
 
@@ -30,21 +32,21 @@ class RedbookDatabase:
                 postgresql://user:password@host:5432/dbname. If omitted,
                 DATABASE_URL env var is used.
         """
-        self.db_url = db_url or os.getenv("DATABASE_URL")
+        self.db_url = db_url or os.getenv('DATABASE_URL')
         if not self.db_url:
-            raise ValueError("PostgreSQL DATABASE_URL is required.")
-        if not self.db_url.startswith(("postgresql://", "postgres://")):
-            raise ValueError("Only postgres URLs are supported for db_url.")
+            raise ValueError('PostgreSQL DATABASE_URL is required.')
+        if not self.db_url.startswith(('postgresql://', 'postgres://')):
+            raise ValueError('Only postgres URLs are supported for db_url.')
 
         self.db: Database
         self.db = connect(self.db_url)
-        logger.info("Using PostgreSQL database backend")
+        logger.info('Using PostgreSQL database backend')
 
         db_proxy.initialize(self.db)
 
         # Create tables if they don't exist
         with self.db:
-            self.db.create_tables([Document, Index, WikiPage, Text, Chunk])
+            self.db.create_tables([Document, PageIndex, WikiPage, Text, Chunk])
 
     def execute(self, query: str, params: tuple = ()) -> None:
         """Execute a single SQL statement in its own transaction.
@@ -55,6 +57,11 @@ class RedbookDatabase:
         """
         with self.db.atomic():
             self.db.execute_sql(query, params)
+
+    def truncate_all_tables(self) -> None:
+        """Truncate all known application tables and reset identities."""
+        with self.db.atomic():
+            self.db.execute_sql('TRUNCATE TABLE chunks, text, wiki_page, page_index, document RESTART IDENTITY CASCADE')
 
     def insert_index(self, index: IndexSchema) -> int:
         """Insert one index entry if it does not already exist.
@@ -67,16 +74,16 @@ class RedbookDatabase:
         """
         try:
             with self.db.atomic():
-                obj, created = Index.get_or_create(
+                obj, _created = PageIndex.get_or_create(
                     page_id=index.pageid,
-                    defaults={"title": index.title, "url": index.url},
+                    defaults={'title': index.title, 'url': index.url},
                 )
                 return obj.page_id
-        except Exception as e:
-            logger.error(f"Failed to insert index: {e}")
+        except PeeweeException as e:
+            logger.error(f'Failed to insert index: {e}')
             return -1
 
-    def insert_indexes(self, indexes: Sequence[IndexSchema]) -> int:
+    def insert_page_indexes(self, indexes: Sequence[IndexSchema]) -> int:
         """Insert a deduplicated batch of index entries.
 
         Args:
@@ -91,13 +98,8 @@ class RedbookDatabase:
         page_ids = [idx.pageid for idx in indexes]
         urls = [idx.url for idx in indexes]
 
-        existing_page_ids = {
-            i.page_id
-            for i in Index.select(Index.page_id).where(Index.page_id << page_ids)
-        }
-        existing_urls = {
-            i.url for i in Index.select(Index.url).where(Index.url << urls)
-        }
+        existing_page_ids = {i.page_id for i in PageIndex.select(PageIndex.page_id).where(PageIndex.page_id << page_ids)}
+        existing_urls = {i.url for i in PageIndex.select(PageIndex.url).where(PageIndex.url << urls)}
 
         to_insert = []
         seen_ids = set()
@@ -109,9 +111,7 @@ class RedbookDatabase:
             if idx.url in existing_urls or idx.url in seen_urls:
                 continue
 
-            to_insert.append(
-                {"page_id": idx.pageid, "title": idx.title, "url": idx.url}
-            )
+            to_insert.append({'page_id': idx.pageid, 'title': idx.title, 'url': idx.url})
             seen_ids.add(idx.pageid)
             seen_urls.add(idx.url)
 
@@ -119,7 +119,7 @@ class RedbookDatabase:
             return 0
 
         with self.db.atomic():
-            Index.insert_many(to_insert).execute()
+            PageIndex.insert_many(to_insert).execute()
             return len(to_insert)
 
     def insert_document(self, page: PageSchema) -> int:
@@ -133,9 +133,7 @@ class RedbookDatabase:
         """
         try:
             with self.db.atomic():
-                doc = Document.create(
-                    title=page.title, url=page.url, raw_content=page.content
-                )
+                doc = Document.create(title=page.title, url=page.url, raw_content=page.content)
 
                 WikiPage.create(
                     document=doc,
@@ -150,8 +148,8 @@ class RedbookDatabase:
                     properties=page.properties,
                 )
                 return doc.get_id()
-        except Exception as e:
-            logger.error(f"Failed to insert document: {e}")
+        except PeeweeException as e:
+            logger.error(f'Failed to insert document: {e}')
             return -1
 
     def insert_text(self, text: TextSchema) -> int:
@@ -166,9 +164,7 @@ class RedbookDatabase:
         source_url = text.url or text.source_path
         try:
             with self.db.atomic():
-                doc = Document.create(
-                    title=text.title, url=source_url, raw_content=text.content
-                )
+                doc = Document.create(title=text.title, url=source_url, raw_content=text.content)
 
                 Text.create(
                     document=doc,
@@ -181,8 +177,8 @@ class RedbookDatabase:
                     file_format=text.file_format,
                 )
                 return doc.get_id()
-        except Exception as e:
-            logger.error(f"Failed to insert text: {e}")
+        except PeeweeException as e:
+            logger.error(f'Failed to insert text: {e}')
             return -1
 
     def insert_chunk(
@@ -215,8 +211,8 @@ class RedbookDatabase:
                     meta_data=meta_data,
                 )
                 return chunk.get_id()
-        except Exception as e:
-            logger.error(f"Failed to insert chunk: {e}")
+        except PeeweeException as e:
+            logger.error(f'Failed to insert chunk: {e}')
             return -1
 
     def get_chunks(self, document_id: int | None = None) -> list[Chunk]:
@@ -234,8 +230,8 @@ class RedbookDatabase:
                 query = query.where(Chunk.document == document_id)
 
             return list(query)
-        except Exception as e:
-            logger.error(f"Failed to get chunks: {e}")
+        except PeeweeException as e:
+            logger.error(f'Failed to get chunks: {e}')
             return []
 
     def document_count(self) -> int:
@@ -261,12 +257,11 @@ class RedbookDatabase:
     def delete_all_tables(self) -> None:
         """Delete all known application tables."""
         with self.db.atomic():
-            self.db.execute_sql("DROP TABLE IF EXISTS chunks CASCADE")
-            self.db.execute_sql("DROP TABLE IF EXISTS text CASCADE")
-            self.db.execute_sql("DROP TABLE IF EXISTS wiki_page CASCADE")
-            # "index" is quoted because INDEX is a SQL keyword.
-            self.db.execute_sql('DROP TABLE IF EXISTS "index" CASCADE')
-            self.db.execute_sql("DROP TABLE IF EXISTS document CASCADE")
+            self.db.execute_sql('DROP TABLE IF EXISTS chunks CASCADE')
+            self.db.execute_sql('DROP TABLE IF EXISTS text CASCADE')
+            self.db.execute_sql('DROP TABLE IF EXISTS wiki_page CASCADE')
+            self.db.execute_sql('DROP TABLE IF EXISTS page_index CASCADE')
+            self.db.execute_sql('DROP TABLE IF EXISTS document CASCADE')
 
     def close(self) -> None:
         """Close the database connection."""

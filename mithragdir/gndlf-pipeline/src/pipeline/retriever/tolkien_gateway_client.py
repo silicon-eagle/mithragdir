@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import click
 from core.db import RedbookDatabase
-from core.schemas import Index, Page
+from core.schemas import Page, PageIndex
 from curl_cffi import requests as curl_requests
 from loguru import logger
 
@@ -150,7 +150,7 @@ class TolkienGatewayClient:
             raise RuntimeError('Index payload is unexpectedly None after retries')
         return payload
 
-    def _build_index_batch(self, allpages: list[dict[str, object]], remaining: int | None = None) -> list[Index]:
+    def _build_index_batch(self, allpages: list[dict[str, object]], remaining: int | None = None) -> list[PageIndex]:
         """Transform MediaWiki allpages entries into Index models.
 
         Args:
@@ -160,7 +160,7 @@ class TolkienGatewayClient:
         Returns:
             Parsed index entries for this batch.
         """
-        batch_indexes: list[Index] = []
+        batch_indexes: list[PageIndex] = []
         for item in allpages:
             if remaining is not None and len(batch_indexes) >= remaining:
                 break
@@ -169,11 +169,11 @@ class TolkienGatewayClient:
             pageid_raw = item.get('pageid', -1)
             pageid = int(pageid_raw) if isinstance(pageid_raw, int | str) and str(pageid_raw).isdigit() else -1
             url = self._build_page_url(title)
-            batch_indexes.append(Index(title=title, pageid=pageid, url=url))
+            batch_indexes.append(PageIndex(title=title, pageid=pageid, url=url))
 
         return batch_indexes
 
-    def _store_index_batch(self, indexes: Sequence[Index]) -> None:
+    def _store_index_batch(self, indexes: Sequence[PageIndex]) -> None:
         """Persist an index batch to the database.
 
         Args:
@@ -181,7 +181,7 @@ class TolkienGatewayClient:
         """
         if not indexes:
             return
-        self.db.insert_indexes(indexes)
+        self.db.insert_page_indexes(indexes)
 
     def _extract_apcontinue(self, payload: dict) -> str | None:
         """Extract continuation token from an index response.
@@ -206,7 +206,7 @@ class TolkienGatewayClient:
         nr_attempts: int = 2,
         retry_sleep_seconds: float = 5.0,
         show_progress: bool = True,
-    ) -> list[Index]:
+    ) -> list[PageIndex]:
         """Fetch and store index entries from MediaWiki allpages.
 
         Args:
@@ -221,7 +221,7 @@ class TolkienGatewayClient:
             Collected index entries.
         """
         logger.info(f'Fetching page index with limit={limit}, batch_size={batch_size}, pause_seconds={pause_seconds}, nr_attempts={nr_attempts}')
-        pages: list[Index] = []
+        pages: list[PageIndex] = []
         next_continue: str | None = None
         spinner_frames = ('|', '/', '-', '\\')
         spinner_step = 0
@@ -376,7 +376,7 @@ class TolkienGatewayClient:
 
     def crawl(  # noqa: C901
         self,
-        index: Index | list[Index] | None = None,
+        index: PageIndex | list[PageIndex] | None = None,
         limit: int | None = None,
         pause_seconds: float | None = None,
         nr_attempts: int = 2,
@@ -406,7 +406,7 @@ class TolkienGatewayClient:
         # Resolve crawl input: use provided index or fetch one.
         if index is None:
             crawl_index = self.get_index(limit=limit, show_progress=show_progress)
-        elif isinstance(index, Index):
+        elif isinstance(index, PageIndex):
             crawl_index = [index]
         else:
             crawl_index = index
@@ -421,7 +421,7 @@ class TolkienGatewayClient:
         processed_count = 0
         stored_count = 0
         failed_count = 0
-        page_iterable: Iterable[Index] = crawl_index
+        page_iterable: Iterable[PageIndex] = crawl_index
         progress_pages = None
         if show_progress:
             progress_pages = click.progressbar(

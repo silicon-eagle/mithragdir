@@ -18,7 +18,7 @@ def db() -> RedbookDatabase:
         pytest.skip('DEV_DATABASE_URL is required for PostgreSQL-backed tests.')
 
     database = RedbookDatabase(db_url=db_url)
-    database.execute('TRUNCATE TABLE chunks, text, wiki_page, "index", document RESTART IDENTITY CASCADE')
+    database.truncate_all_tables()
     return database
 
 

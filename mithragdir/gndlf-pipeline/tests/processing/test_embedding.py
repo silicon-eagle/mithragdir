@@ -16,7 +16,7 @@ def db() -> RedbookDatabase:
         pytest.skip('DEV_DATABASE_URL is required for PostgreSQL-backed tests.')
 
     database = RedbookDatabase(db_url=db_url)
-    database.execute('TRUNCATE TABLE chunks, text, wiki_page, "index", document RESTART IDENTITY CASCADE')
+    database.truncate_all_tables()
     return database
 
 
@@ -64,21 +64,23 @@ class TestChunkEmbedder:
             with_vectors=True,
         )
         assert len(points) == 1
-        assert points[0].vector is not None
+        assert isinstance(points[0].vector, dict)
         assert 'dense' in points[0].vector
         assert 'sparse' in points[0].vector
         assert 'late_interaction' in points[0].vector
         late_interaction_vector = points[0].vector['late_interaction']
+        assert isinstance(late_interaction_vector, list)
         expected_late_interaction = embedder.encode_texts_late_interaction(
             ['In a hole in the ground there lived a hobbit.'],
             batch_size=8,
         )[0]
         assert len(late_interaction_vector) == len(expected_late_interaction)
-        assert all(len(token_vector) == len(expected_late_interaction[0]) for token_vector in late_interaction_vector)
+        token_vectors = [token_vector for token_vector in late_interaction_vector if isinstance(token_vector, list)]
+        assert len(token_vectors) == len(late_interaction_vector)
+        assert all(len(token_vector) == len(expected_late_interaction[0]) for token_vector in token_vectors)
 
         embedder.qdrant_client.delete_collection(collection_name=collection_name)
 
-    @pytest.mark.slow
     @pytest.mark.llm
     def test_encode_and_upsert_hybrid_chunks_upserts_points(self, db: RedbookDatabase) -> None:
         document_id = db.insert_text(

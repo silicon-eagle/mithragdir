@@ -31,7 +31,7 @@ uv run gndlf-core init-db \
 
 ### Delete Database
 
-Deletes all app tables (`document`, `index`, `wiki_page`, `text`, `chunks`).
+Deletes all app tables (`document`, `page_index`, `wiki_page`, `text`, `chunks`).
 
 ```bash
 uv run gndlf-core delete-db

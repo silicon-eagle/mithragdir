@@ -4,18 +4,18 @@ import sqlite3
 from pathlib import Path
 
 import click
-from dotenv import load_dotenv
 import psycopg2
+from dotenv import load_dotenv
 from psycopg2 import sql
 
 load_dotenv()
 
 TABLES_IN_ORDER = [
-    "index",
-    "document",
-    "wiki_page",
-    "text",
-    "chunks",
+    'index',
+    'document',
+    'wiki_page',
+    'text',
+    'chunks',
 ]
 
 
@@ -29,9 +29,7 @@ def _sqlite_columns(connection: sqlite3.Connection, table_name: str) -> list[str
     return [row[1] for row in rows]
 
 
-def _postgres_columns(
-    connection: psycopg2.extensions.connection, table_name: str
-) -> list[str]:
+def _postgres_columns(connection: psycopg2.extensions.connection, table_name: str) -> list[str]:
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -63,10 +61,10 @@ def _copy_table(
     if not rows:
         return 0
 
-    placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in common_cols)
-    insert_query = sql.SQL("INSERT INTO {table} ({columns}) VALUES ({values})").format(
+    placeholders = sql.SQL(', ').join(sql.Placeholder() for _ in common_cols)
+    insert_query = sql.SQL('INSERT INTO {table} ({columns}) VALUES ({values})').format(
         table=sql.Identifier(table_name),
-        columns=sql.SQL(", ").join(sql.Identifier(column) for column in common_cols),
+        columns=sql.SQL(', ').join(sql.Identifier(column) for column in common_cols),
         values=placeholders,
     )
 
@@ -78,27 +76,25 @@ def _copy_table(
 
 @click.command()
 @click.option(
-    "--sqlite-path",
+    '--sqlite-path',
     type=click.Path(path_type=Path, dir_okay=False),
-    default=Path.cwd() / "database" / "redbook.db",
+    default=Path.cwd() / 'database' / 'redbook.db',
     show_default=True,
-    help="Path to SQLite database file.",
+    help='Path to SQLite database file.',
 )
 @click.option(
-    "--postgres-url",
-    envvar="PRD_DATABASE_URL",
+    '--postgres-url',
+    envvar='PRD_DATABASE_URL',
     default=None,
-    help="PostgreSQL connection URL. Defaults to PRD_DATABASE_URL.",
+    help='PostgreSQL connection URL. Defaults to PRD_DATABASE_URL.',
 )
 def main(sqlite_path: Path, postgres_url: str) -> None:
     """Migrate data from SQLite to PostgreSQL."""
     if not sqlite_path.exists() or not sqlite_path.is_file():
-        raise click.UsageError(f"SQLite file does not exist: {sqlite_path}")
+        raise click.UsageError(f'SQLite file does not exist: {sqlite_path}')
 
     if not postgres_url:
-        raise click.UsageError(
-            "Missing PostgreSQL URL. Provide --postgres-url or set PRD_DATABASE_URL."
-        )
+        raise click.UsageError('Missing PostgreSQL URL. Provide --postgres-url or set PRD_DATABASE_URL.')
 
     sqlite_connection = sqlite3.connect(str(sqlite_path))
     postgres_connection = psycopg2.connect(postgres_url)
@@ -109,19 +105,16 @@ def main(sqlite_path: Path, postgres_url: str) -> None:
         for table_name in TABLES_IN_ORDER:
             sqlite_rows = _sqlite_row_count(sqlite_connection, table_name)
             copied = _copy_table(sqlite_connection, postgres_connection, table_name)
-            click.echo(f"{table_name}: sqlite_rows={sqlite_rows}, copied_rows={copied}")
+            click.echo(f'{table_name}: sqlite_rows={sqlite_rows}, copied_rows={copied}')
             total_sqlite_rows += sqlite_rows
             total_copied_rows += copied
 
         postgres_connection.commit()
-        click.echo(
-            f"Migration complete. Total sqlite_rows={total_sqlite_rows}, "
-            f"total_copied_rows={total_copied_rows}"
-        )
+        click.echo(f'Migration complete. Total sqlite_rows={total_sqlite_rows}, total_copied_rows={total_copied_rows}')
     finally:
         sqlite_connection.close()
         postgres_connection.close()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -1,5 +1,6 @@
-from datetime import datetime
 import json
+from datetime import datetime
+
 from peewee import (
     AutoField,
     CharField,
@@ -16,14 +17,14 @@ database = Proxy()
 
 
 class JsonField(Field):
-    field_type = "JSON"
+    field_type = 'JSON'
 
-    def db_value(self, value):
+    def db_value(self, value: object | None) -> str | None:
         if value is None:
             return None
         return json.dumps(value)
 
-    def python_value(self, value):
+    def python_value(self, value: str | bytes | bytearray | dict | list | None) -> object | None:
         if value is None:
             return None
         if isinstance(value, (dict, list)):
@@ -31,30 +32,30 @@ class JsonField(Field):
         return json.loads(value)
 
 
-class BaseModel(Model):
-    class Meta:
-        database = database
-
-
-class Document(BaseModel):
-    document_id = AutoField(column_name="document_id")
+class Document(Model):
+    document_id = AutoField(column_name='document_id')
     title = CharField()
     url = CharField(null=True)
     raw_content = TextField()
     created_at = DateTimeField(default=datetime.now)
 
+    class Meta:
+        database = database
+        table_name = 'document'
 
-class Index(BaseModel):
+
+class PageIndex(Model):
     page_id = IntegerField(unique=True)
     title = CharField()
     url = CharField()
 
     class Meta:
-        table_name = "index"
+        database = database
+        table_name = 'page_index'
 
 
-class WikiPage(BaseModel):
-    document = ForeignKeyField(Document, backref="wiki_page")
+class WikiPage(Model):
+    document = ForeignKeyField(Document, backref='wiki_page')
     page_id = IntegerField()
     categories = JsonField(default=list)
     images = JsonField(default=list)
@@ -66,11 +67,12 @@ class WikiPage(BaseModel):
     properties = JsonField(default=list)
 
     class Meta:
-        table_name = "wiki_page"
+        database = database
+        table_name = 'wiki_page'
 
 
-class Text(BaseModel):
-    document = ForeignKeyField(Document, backref="text_source")
+class Text(Model):
+    document = ForeignKeyField(Document, backref='text_source')
     author = CharField(null=True)
     publisher = CharField(null=True)
     published_year = IntegerField(null=True)
@@ -80,11 +82,12 @@ class Text(BaseModel):
     file_format = CharField(null=True)
 
     class Meta:
-        table_name = "text"
+        database = database
+        table_name = 'text'
 
 
-class Chunk(BaseModel):
-    document = ForeignKeyField(Document, backref="chunks")
+class Chunk(Model):
+    document = ForeignKeyField(Document, backref='chunks')
     chunk_index = IntegerField()
     content = TextField()
     token_count = IntegerField()
@@ -92,14 +95,15 @@ class Chunk(BaseModel):
     created_at = DateTimeField(default=datetime.now)
 
     class Meta:
-        table_name = "chunks"
+        database = database
+        table_name = 'chunks'
 
     def build_metadata_payload(self) -> dict:
         payload = {
-            "document_id": self.document_id,
-            "chunk_index": self.chunk_index,
-            "token_count": self.token_count,
-            "content": self.content,
+            'document_id': self.document.document_id,
+            'chunk_index': self.chunk_index,
+            'token_count': self.token_count,
+            'content': self.content,
         }
         if self.meta_data:
             payload.update(self.meta_data)

@@ -1,8 +1,9 @@
-from typing import Any, Optional
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 
-class Index(BaseModel):
+class PageIndex(BaseModel):
     pageid: int
     title: str
     url: str
@@ -20,8 +21,8 @@ class Page(BaseModel):
     links: list[str] = []
     external_links: list[str] = []
     sections: list[Any] = []  # JSON list
-    revid: Optional[int] = None
-    displaytitle: Optional[str] = None
+    revid: int | None = None
+    displaytitle: str | None = None
     properties: list[Any] = []  # JSON list
 
     model_config = ConfigDict(from_attributes=True)
@@ -29,26 +30,26 @@ class Page(BaseModel):
 
 class Text(BaseModel):
     title: str
-    url: Optional[str] = None
+    url: str | None = None
     source_path: str
     content: str
-    author: Optional[str] = None
-    publisher: Optional[str] = None
-    published_year: Optional[int] = None
-    isbn: Optional[str] = None
-    language: Optional[str] = None
-    file_format: Optional[str] = None
+    author: str | None = None
+    publisher: str | None = None
+    published_year: int | None = None
+    isbn: str | None = None
+    language: str | None = None
+    file_format: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class Chunk(BaseModel):
-    id: Optional[int] = None
+    id: int | None = None
     document_id: int
     chunk_index: int
     content: str
     token_count: int
-    meta_data: Optional[dict[str, Any]] = None
-    created_at: Optional[str] = None
+    meta_data: dict[str, Any] | None = None
+    created_at: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
