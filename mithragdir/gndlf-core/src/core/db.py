@@ -40,7 +40,7 @@ class RedbookDatabase:
 
         self.db: Database
         self.db = connect(self.db_url)
-        logger.info('Using PostgreSQL database backend')
+        logger.info(f'Using PostgreSQL database backend at {self.db_url}')
 
         db_proxy.initialize(self.db)
 
