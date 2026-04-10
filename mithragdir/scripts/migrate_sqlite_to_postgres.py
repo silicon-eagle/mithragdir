@@ -78,7 +78,7 @@ def _copy_table(
 @click.option(
     '--sqlite-path',
     type=click.Path(path_type=Path, dir_okay=False),
-    default=Path.cwd() / 'database' / 'redbook.db',
+    default=Path('..') / 'database' / 'redbook.db',
     show_default=True,
     help='Path to SQLite database file.',
 )

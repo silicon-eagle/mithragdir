@@ -213,7 +213,7 @@ class Chunker:
         def process_doc(doc: Document) -> None:
             nonlocal processed_documents, inserted_chunks
             content = doc.raw_content
-            if not content or not content.strip():
+            if not content or not str(content).strip():
                 logger.warning(f'Skipping empty document content for document_id={doc.document_id}')
                 return
 
@@ -228,8 +228,8 @@ class Chunker:
             logger.debug(f'Chunking document_id={doc.document_id} title="{doc.title}" content_type={content_type}')
 
             inserted = self.chunk_document(
-                document_id=doc.document_id,
-                content=content,
+                document_id=doc.get_id(),
+                content=str(content),
                 content_type=content_type,
                 metadata={'document_id': doc.document_id, 'title': doc.title, 'url': doc.url},
             )

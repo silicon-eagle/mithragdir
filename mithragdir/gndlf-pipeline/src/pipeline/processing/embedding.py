@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from itertools import groupby
 
 import click
 from core.db import RedbookDatabase
@@ -245,38 +244,36 @@ class ChunkEmbedder:
             batch_size: Embedding batch size.
             show_progress: Whether to render a terminal progress bar.
         """
-        chunks = self.db.get_chunks(document_id=document_id)
+        document_ids = self.db.get_document_ids_with_chunks(document_id=document_id)
+        total_documents = len(document_ids)
         scope = f'document_id={document_id}' if document_id is not None else 'all documents'
-        logger.info(f'Encoding and upserting {len(chunks)} chunks for {scope}')
+        logger.info(f'Encoding and upserting chunks for {total_documents} documents ({scope})')
 
-        if not chunks:
+        if not document_ids:
             return 0
-
-        chunks_by_document = {int(doc_id): list(group_chunks) for doc_id, group_chunks in groupby(chunks, key=lambda chunk: chunk.document_id)}
-        total_documents = len(chunks_by_document)
 
         upserted_total = 0
         self.create_collection()
 
-        items = list(chunks_by_document.items())
-
         def upsert_document(document_chunks: Sequence[Chunk]) -> int:
+            if not document_chunks:
+                return 0
             dense_vectors = self.encode_texts_dense(
-                texts=[chunk.content for chunk in document_chunks],
+                texts=[str(chunk.content) for chunk in document_chunks],
                 batch_size=batch_size,
             )
             sparse_vectors = self.encode_texts_sparse(
-                texts=[chunk.content for chunk in document_chunks],
+                texts=[str(chunk.content) for chunk in document_chunks],
                 batch_size=batch_size,
             )
             late_interaction_vectors = self.encode_texts_late_interaction(
-                texts=[chunk.content for chunk in document_chunks],
+                texts=[str(chunk.content) for chunk in document_chunks],
                 batch_size=batch_size,
             )
 
             points = [
                 PointStruct(
-                    id=chunk.id,
+                    id=int(chunk.get_id()),
                     vector={
                         self.dense_vector_name: dense_vectors[index],
                         self.sparse_vector_name: sparse_vectors[index],
@@ -295,11 +292,13 @@ class ChunkEmbedder:
             return len(points)
 
         if show_progress:
-            with click.progressbar(items, label='Encoding documents', show_pos=True) as progress_documents:
-                for _current_document_id, document_chunks in progress_documents:
+            with click.progressbar(document_ids, label='Encoding documents', show_pos=True) as progress_documents:
+                for doc_id in progress_documents:
+                    document_chunks = self.db.get_chunks(document_id=doc_id)
                     upserted_total += upsert_document(document_chunks)
         else:
-            for _current_document_id, document_chunks in items:
+            for doc_id in document_ids:
+                document_chunks = self.db.get_chunks(document_id=doc_id)
                 upserted_total += upsert_document(document_chunks)
 
         logger.info(f'Encoding finished: upserted_hybrid_vectors={upserted_total}, documents={total_documents}, collection={self.collection_name}')

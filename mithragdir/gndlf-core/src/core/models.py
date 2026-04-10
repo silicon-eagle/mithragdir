@@ -45,7 +45,7 @@ class Document(Model):
 
 
 class PageIndex(Model):
-    page_id = IntegerField(unique=True)
+    page_id = AutoField(column_name='page_id')
     title = CharField()
     url = CharField()
 
@@ -87,6 +87,7 @@ class Text(Model):
 
 
 class Chunk(Model):
+    chunk_id = AutoField(column_name='chunk_id')
     document = ForeignKeyField(Document, backref='chunks')
     chunk_index = IntegerField()
     content = TextField()

@@ -234,6 +234,24 @@ class RedbookDatabase:
             logger.error(f'Failed to get chunks: {e}')
             return []
 
+    def get_document_ids_with_chunks(self, document_id: int | None = None) -> list[int]:
+        """Return all distinct document IDs that have chunks.
+
+        Args:
+            document_id: Optional document id filter.
+
+        Returns:
+            List of document ids.
+        """
+        try:
+            query = Chunk.select(Chunk.document).distinct().order_by(Chunk.document)
+            if document_id is not None:
+                query = query.where(Chunk.document == document_id)
+            return [chunk.document_id for chunk in query]
+        except PeeweeException as e:
+            logger.error(f'Failed to get document ids: {e}')
+            return []
+
     def document_count(self) -> int:
         """Return total number of documents."""
         return Document.select().count()
