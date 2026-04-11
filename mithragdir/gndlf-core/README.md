@@ -14,51 +14,32 @@ uv run gndlf-core --help
 
 ### Initialize Database
 
-Uses `--target` with env vars from `.env`:
-- `--dev` -> `DEV_DATABASE_URL`, otherwise `DATABASE_URL`
+Creates tables for production or development database.
 
+**Production** (uses `DATABASE_URL` env var):
 
 ```bash
 uv run gndlf-core init-db
 ```
 
-Explicit target example:
+**Development** (uses `DEV_DATABASE_URL` env var):
 
 ```bash
-uv run gndlf-core init-db \
-	--target dev
+uv run gndlf-core init-db --dev
 ```
 
 ### Delete Database
 
-Deletes all app tables (`document`, `page_index`, `wiki_page`, `text`, `chunks`).
+Deletes all app tables: `document`, `wiki_page`, `text`, `chunks`.
+
+**Production**:
 
 ```bash
 uv run gndlf-core delete-db
 ```
 
-## Examples: PRD and DEV
-
-### Deploy PRD database tables
+**Development**:
 
 ```bash
-uv run gndlf-core init-db --target prd
-```
-
-### Deploy DEV database tables
-
-```bash
-uv run gndlf-core init-db --target dev
-```
-
-### Remove PRD database tables
-
-```bash
-uv run gndlf-core delete-db --target prd
-```
-
-### Remove DEV database tables
-
-```bash
-uv run gndlf-core delete-db --target dev
+uv run gndlf-core delete-db --dev
 ```

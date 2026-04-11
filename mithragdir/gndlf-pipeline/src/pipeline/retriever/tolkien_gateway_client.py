@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import click
 from core.db import RedbookDatabase
-from core.schemas import Page, PageIndex
+from core.schemas import CrawlIndex, Page
 from curl_cffi import requests as curl_requests
 from loguru import logger
 
@@ -150,7 +150,7 @@ class TolkienGatewayClient:
             raise RuntimeError('Index payload is unexpectedly None after retries')
         return payload
 
-    def _build_index_batch(self, allpages: list[dict[str, object]], remaining: int | None = None) -> list[PageIndex]:
+    def _build_index_batch(self, allpages: list[dict[str, object]], remaining: int | None = None) -> list[CrawlIndex]:
         """Transform MediaWiki allpages entries into Index models.
 
         Args:
@@ -160,7 +160,7 @@ class TolkienGatewayClient:
         Returns:
             Parsed index entries for this batch.
         """
-        batch_indexes: list[PageIndex] = []
+        batch_indexes: list[CrawlIndex] = []
         for item in allpages:
             if remaining is not None and len(batch_indexes) >= remaining:
                 break
@@ -169,19 +169,9 @@ class TolkienGatewayClient:
             pageid_raw = item.get('pageid', -1)
             pageid = int(pageid_raw) if isinstance(pageid_raw, int | str) and str(pageid_raw).isdigit() else -1
             url = self._build_page_url(title)
-            batch_indexes.append(PageIndex(title=title, pageid=pageid, url=url))
+            batch_indexes.append(CrawlIndex(title=title, pageid=pageid, url=url))
 
         return batch_indexes
-
-    def _store_index_batch(self, indexes: Sequence[PageIndex]) -> None:
-        """Persist an index batch to the database.
-
-        Args:
-            indexes: Index rows to persist.
-        """
-        if not indexes:
-            return
-        self.db.insert_page_indexes(indexes)
 
     def _extract_apcontinue(self, payload: dict) -> str | None:
         """Extract continuation token from an index response.
@@ -206,8 +196,8 @@ class TolkienGatewayClient:
         nr_attempts: int = 2,
         retry_sleep_seconds: float = 5.0,
         show_progress: bool = True,
-    ) -> list[PageIndex]:
-        """Fetch and store index entries from MediaWiki allpages.
+    ) -> list[CrawlIndex]:
+        """Fetch index entries from MediaWiki allpages.
 
         Args:
             limit: Optional max number of pages to fetch.
@@ -221,7 +211,7 @@ class TolkienGatewayClient:
             Collected index entries.
         """
         logger.info(f'Fetching page index with limit={limit}, batch_size={batch_size}, pause_seconds={pause_seconds}, nr_attempts={nr_attempts}')
-        pages: list[PageIndex] = []
+        pages: list[CrawlIndex] = []
         next_continue: str | None = None
         spinner_frames = ('|', '/', '-', '\\')
         spinner_step = 0
@@ -268,7 +258,6 @@ class TolkienGatewayClient:
 
                 batch_indexes = self._build_index_batch(allpages=allpages, remaining=remaining)
                 pages.extend(batch_indexes)
-                self._store_index_batch(batch_indexes)
 
                 if progress_bar is not None:
                     progress_bar.update(len(batch_indexes))
@@ -376,7 +365,7 @@ class TolkienGatewayClient:
 
     def crawl(  # noqa: C901
         self,
-        index: PageIndex | list[PageIndex] | None = None,
+        index: CrawlIndex | list[CrawlIndex] | None = None,
         limit: int | None = None,
         pause_seconds: float | None = None,
         nr_attempts: int = 2,
@@ -406,7 +395,7 @@ class TolkienGatewayClient:
         # Resolve crawl input: use provided index or fetch one.
         if index is None:
             crawl_index = self.get_index(limit=limit, show_progress=show_progress)
-        elif isinstance(index, PageIndex):
+        elif isinstance(index, CrawlIndex):
             crawl_index = [index]
         else:
             crawl_index = index
@@ -421,7 +410,7 @@ class TolkienGatewayClient:
         processed_count = 0
         stored_count = 0
         failed_count = 0
-        page_iterable: Iterable[PageIndex] = crawl_index
+        page_iterable: Iterable[CrawlIndex] = crawl_index
         progress_pages = None
         if show_progress:
             progress_pages = click.progressbar(

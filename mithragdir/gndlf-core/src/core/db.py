@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
 from typing import Any
 
 from loguru import logger
@@ -11,7 +10,6 @@ from playhouse.db_url import connect
 from core.models import (
     Chunk,
     Document,
-    PageIndex,
     Text,
     WikiPage,
 )
@@ -19,7 +17,6 @@ from core.models import (
     database as db_proxy,
 )
 from core.schemas import Page as PageSchema
-from core.schemas import PageIndex as IndexSchema
 from core.schemas import Text as TextSchema
 
 
@@ -46,7 +43,7 @@ class RedbookDatabase:
 
         # Create tables if they don't exist
         with self.db:
-            self.db.create_tables([Document, PageIndex, WikiPage, Text, Chunk])
+            self.db.create_tables([Document, WikiPage, Text, Chunk])
 
     def execute(self, query: str, params: tuple = ()) -> None:
         """Execute a single SQL statement in its own transaction.
@@ -61,66 +58,7 @@ class RedbookDatabase:
     def truncate_all_tables(self) -> None:
         """Truncate all known application tables and reset identities."""
         with self.db.atomic():
-            self.db.execute_sql('TRUNCATE TABLE chunks, text, wiki_page, page_index, document RESTART IDENTITY CASCADE')
-
-    def insert_index(self, index: IndexSchema) -> int:
-        """Insert one index entry if it does not already exist.
-
-        Args:
-            index: Page index metadata.
-
-        Returns:
-            Inserted row id or existing page id.
-        """
-        try:
-            with self.db.atomic():
-                obj, _created = PageIndex.get_or_create(
-                    page_id=index.pageid,
-                    defaults={'title': index.title, 'url': index.url},
-                )
-                return obj.page_id
-        except PeeweeException as e:
-            logger.error(f'Failed to insert index: {e}')
-            return -1
-
-    def insert_page_indexes(self, indexes: Sequence[IndexSchema]) -> int:
-        """Insert a deduplicated batch of index entries.
-
-        Args:
-            indexes: Index entries to insert.
-
-        Returns:
-            Number of newly inserted rows.
-        """
-        if not indexes:
-            return 0
-
-        page_ids = [idx.pageid for idx in indexes]
-        urls = [idx.url for idx in indexes]
-
-        existing_page_ids = {i.page_id for i in PageIndex.select(PageIndex.page_id).where(PageIndex.page_id << page_ids)}
-        existing_urls = {i.url for i in PageIndex.select(PageIndex.url).where(PageIndex.url << urls)}
-
-        to_insert = []
-        seen_ids = set()
-        seen_urls = set()
-
-        for idx in indexes:
-            if idx.pageid in existing_page_ids or idx.pageid in seen_ids:
-                continue
-            if idx.url in existing_urls or idx.url in seen_urls:
-                continue
-
-            to_insert.append({'page_id': idx.pageid, 'title': idx.title, 'url': idx.url})
-            seen_ids.add(idx.pageid)
-            seen_urls.add(idx.url)
-
-        if not to_insert:
-            return 0
-
-        with self.db.atomic():
-            PageIndex.insert_many(to_insert).execute()
-            return len(to_insert)
+            self.db.execute_sql('TRUNCATE TABLE chunks, text, wiki_page, document RESTART IDENTITY CASCADE')
 
     def insert_document(self, page: PageSchema) -> int:
         """Insert a wiki page into document and wiki_page tables.
@@ -278,7 +216,6 @@ class RedbookDatabase:
             self.db.execute_sql('DROP TABLE IF EXISTS chunks CASCADE')
             self.db.execute_sql('DROP TABLE IF EXISTS text CASCADE')
             self.db.execute_sql('DROP TABLE IF EXISTS wiki_page CASCADE')
-            self.db.execute_sql('DROP TABLE IF EXISTS page_index CASCADE')
             self.db.execute_sql('DROP TABLE IF EXISTS document CASCADE')
 
     def close(self) -> None:

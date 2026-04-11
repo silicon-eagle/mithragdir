@@ -5,12 +5,9 @@ import os
 import pytest
 
 from core.db import RedbookDatabase
-from core.models import Chunk, Document, PageIndex, Text, WikiPage
+from core.models import Chunk, Document, Text, WikiPage
 from core.schemas import (
     Page as PageSchema,
-)
-from core.schemas import (
-    PageIndex as IndexSchema,
 )
 from core.schemas import (
     Text as TextSchema,
@@ -29,45 +26,6 @@ def db() -> RedbookDatabase:
 
 
 class TestRedbookDatabase:
-    def test_insert_index(self, db: RedbookDatabase) -> None:
-        index_id = db.insert_index(IndexSchema(title='Title', pageid=123, url='http://example.com'))
-        assert isinstance(index_id, int)
-        assert index_id == 123
-
-    def test_insert_indexes_batch(self, db: RedbookDatabase) -> None:
-        inserted = db.insert_page_indexes(
-            [
-                IndexSchema(title='Doc 1', pageid=1, url='http://a.com'),
-                IndexSchema(title='Doc 2', pageid=2, url='http://b.com'),
-                IndexSchema(title='Doc 1 duplicate', pageid=1, url='http://a-dup.com'),
-            ]
-        )
-        assert inserted == 2
-
-        rows = list(PageIndex.select().order_by(PageIndex.page_id))
-        assert len(rows) == 2
-        assert rows[0].page_id == 1
-        assert rows[1].page_id == 2
-
-    def test_insert_indexes_is_idempotent(self, db: RedbookDatabase) -> None:
-        first = [
-            IndexSchema(title='Doc 1', pageid=1, url='http://a.com'),
-            IndexSchema(title='Doc 2', pageid=2, url='http://b.com'),
-        ]
-        inserted_first = db.insert_page_indexes(first)
-        assert inserted_first == 2
-
-        second = [
-            IndexSchema(title='Doc 1 duplicate pageid', pageid=1, url='http://new-a.com'),
-            IndexSchema(title='Doc 2 duplicate url', pageid=3, url='http://b.com'),
-            IndexSchema(title='Doc 3', pageid=4, url='http://d.com'),
-        ]
-        inserted_second = db.insert_page_indexes(second)
-        assert inserted_second == 1
-
-        count = PageIndex.select().count()
-        assert count == 3
-
     def test_insert_document(self, db: RedbookDatabase) -> None:
         doc_id = db.insert_document(PageSchema(title='Title', pageid=123, url='http://example.com', content='content'))
         assert isinstance(doc_id, int)

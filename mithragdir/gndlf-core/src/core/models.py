@@ -44,16 +44,6 @@ class Document(Model):
         table_name = 'document'
 
 
-class PageIndex(Model):
-    page_id = AutoField(column_name='page_id')
-    title = CharField()
-    url = CharField()
-
-    class Meta:
-        database = database
-        table_name = 'page_index'
-
-
 class WikiPage(Model):
     document = ForeignKeyField(Document, backref='wiki_page')
     page_id = IntegerField()

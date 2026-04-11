@@ -11,7 +11,6 @@ from psycopg2 import sql
 load_dotenv()
 
 TABLES_IN_ORDER = [
-    'index',
     'document',
     'wiki_page',
     'text',

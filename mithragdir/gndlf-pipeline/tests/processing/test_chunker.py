@@ -47,7 +47,7 @@ class TestChunker:
         assert chunks[0].meta_data['chunk_method'] == 'recursive_character'
         assert chunks[0].meta_data['title'] == 'Long Text'
         assert isinstance(chunks[0].meta_data, dict)
-        assert all(chunk.id > 0 for chunk in chunks)
+        assert all(chunk.chunk_id > 0 for chunk in chunks)
 
     def test_chunk_html_document_stores_html_chunks(self, db: RedbookDatabase) -> None:
         html_content = (
@@ -121,7 +121,7 @@ class TestChunker:
 
         chunks = db.get_chunks()
         assert len(chunks) == inserted_chunks
-        chunk_document_ids = {chunk.document_id for chunk in chunks}
+        chunk_document_ids = {int(chunk.document.get_id()) for chunk in chunks}
         assert text_document_id in chunk_document_ids
         assert wiki_document_id in chunk_document_ids
 

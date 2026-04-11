@@ -10,12 +10,27 @@ uv sync
 
 ## CLI
 
-The CLI provides two subcommands for different stages of the pipeline:
+The CLI provides two subcommands for data ingestion and embedding:
 
 Show available commands:
 
 ```bash
 uv run gndlf-pipeline --help
+```
+
+### Global Options
+
+Apply to all commands (specified before subcommand):
+
+- `--db-url`: PostgreSQL URL (defaults to `DATABASE_URL` env var)
+- `--dev`: Use DEV environment variables (`DEV_DATABASE_URL`, `DEV_QDRANT_URL`)
+- `--log-level`: Logging level (default: `INFO`)
+- `--log-dir`: Log file directory (default: `.log/`)
+
+Example:
+
+```bash
+uv run gndlf-pipeline --dev wiki
 ```
 
 ### Crawl Wiki and Text Data
@@ -31,10 +46,10 @@ Common options:
 - `--wiki-base-url`: Wiki base URL (default: `https://tolkiengateway.net`)
 - `--index-limit`: Max number of index entries to fetch
 - `--crawl-limit`: Max number of pages to crawl
-- `--text-source-folder`: location of local text sources (default: `database/texts`)
-- `--progress/--no-progress`: Show progress output
+- `--text-source-folder`: Local text sources directory (default: `database/texts`)
+- `--progress/--no-progress`: Show progress output (default: enabled)
 
-Show all wiki options:
+View all wiki options:
 
 ```bash
 uv run gndlf-pipeline wiki --help
@@ -42,7 +57,7 @@ uv run gndlf-pipeline wiki --help
 
 ### Pipeline (Clear and/or Run)
 
-Use one command for both clearing and execution:
+Chunk documents and generate embeddings:
 
 ```bash
 # Clear chunks + embeddings only
@@ -57,96 +72,43 @@ uv run gndlf-pipeline pipeline --clear --run
 
 Common options:
 
-- `--chunk-size` and `--chunk-overlap`: chunking configuration
-- `--encode-document-id`: optional filter by document ID
-- `--clear/--no-clear`: clear PostgreSQL chunks and reset Qdrant collection
-- `--run/--no-run`: run chunking and embedding pipeline
-- `--qdrant-url`: Qdrant endpoint (can also be set via `QDRANT_URL`)
-- `--progress/--no-progress`: Show progress output
+- `--clear/--no-clear`: Clear PostgreSQL chunks and reset Qdrant collection (default: disabled)
+- `--run/--no-run`: Run chunking and embedding pipeline (default: disabled)
+- `--chunk-size` and `--chunk-overlap`: Chunking configuration (defaults: 512, 64)
+- `--encode-document-id`: Optional document ID filter when encoding chunks
+- `--qdrant-url`: Qdrant endpoint (defaults to `QDRANT_URL` env var)
+- `--progress/--no-progress`: Show progress output (default: enabled)
 
-Show all pipeline options:
+View all pipeline options:
 
 ```bash
 uv run gndlf-pipeline pipeline --help
 ```
 
-### Global Options
+## Local Development
 
-Global options apply to all commands and are specified before the subcommand:
-
-- `--db-url`: PostgreSQL URL. Can also be set via `DATABASE_URL`.
-- `--log-level`: logging level (default: `INFO`)
-- `--log-dir`: directory for log files
-
-Example:
-
-```bash
-uv run gndlf-pipeline --db-url postgresql://redbook:redbook@localhost:5432/redbook wiki
-```
-
-## Run with PostgreSQL (Docker)
-
-Start PostgreSQL locally:
+Start services locally:
 
 ```bash
 docker compose -f docker-compose.postgres.yml up -d
-```
-
-## Run Qdrant (Docker)
-
-Start Qdrant locally:
-
-```bash
 docker compose -f docker-compose.qdrant.yml up -d
 ```
 
-Set local endpoint for the embedding pipeline:
+Configure environment variables in `.env` (see [.env.example](.env.example)).
+
+Run pipeline with dev environment:
 
 ```bash
-export QDRANT_URL=http://localhost:6333
-```
-
-Stop Qdrant when finished:
-
-```bash
-docker compose -f docker-compose.qdrant.yml down
-```
-
-Run pipeline with local PostgreSQL and Qdrant:
-
-```bash
-export DATABASE_URL=postgresql://redbook:redbook@localhost:5432/redbook
-uv run gndlf-pipeline pipeline
-```
-
-Or pass the URL directly:
-
-```bash
-uv run gndlf-pipeline --db-url postgresql://redbook:redbook@localhost:5432/redbook pipeline
+uv run gndlf-pipeline --dev pipeline --clear --run
 ```
 
 ## Embedding model auth (Hugging Face)
 
 The default embedding model is `google/embeddinggemma-300m` in `processing/embedding.py`.
-This model is gated on Hugging Face, so you must authenticate before first use.
-
-1. Request/confirm access to the model: `https://huggingface.co/google/embeddinggemma-300m`
-2. Log in locally:
-
-```bash
-uv run huggingface-cli login
-```
-
-You can also use an environment variable instead of interactive login:
-
-```bash
-export HF_TOKEN=<your_hugging_face_token>
-```
-
-Recommended for local development: add it to a project `.env` file (already gitignored):
+This model is gated on Hugging Face. Add `HF_TOKEN` to `.env` (see [.env.example](.env.example)):
 
 ```bash
 HF_TOKEN=<your_hugging_face_token>
 ```
 
-Without auth, embedding-related tests and runtime embedding calls will skip/fail with `401` or `gated repo` errors.
+Without auth, embedding calls will fail with `401` errors.

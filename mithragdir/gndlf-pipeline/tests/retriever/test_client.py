@@ -2,7 +2,7 @@ import os
 
 import pytest
 from core.db import RedbookDatabase
-from core.schemas import Page, PageIndex
+from core.schemas import CrawlIndex, Page
 from numpy import ceil
 from pipeline.retriever.tolkien_gateway_client import TolkienGatewayClient
 
@@ -39,7 +39,7 @@ class TestTolkienGatewayClient:
     def test_get_index_with_small_limit(self, client: TolkienGatewayClient) -> None:
         pages = client.get_index(limit=2)
         assert len(pages) == 2
-        assert all(isinstance(page, PageIndex) for page in pages)
+        assert all(isinstance(page, CrawlIndex) for page in pages)
         assert all(page.title for page in pages)
         assert all(page.pageid > 0 for page in pages)
         assert all(page.url.startswith('https://tolkiengateway.net/wiki/') for page in pages)
@@ -55,7 +55,6 @@ class TestTolkienGatewayClient:
 
     def test_store_page_flushes_at_batch_size(self, client: TolkienGatewayClient, db: RedbookDatabase) -> None:
         pages = [Page(title=f'Page {i}', pageid=i, url=f'http://example/{i}', content=f'content {i}') for i in range(1, 26)]
-        db.insert_page_indexes([PageIndex(title=page.title, pageid=page.pageid, url=page.url) for page in pages])
 
         for page in pages[:-1]:
             client.store_page(page)
@@ -71,8 +70,7 @@ class TestTolkienGatewayClient:
         assert db.document_count() == nr_pages
 
     def test_crawl_retries_after_error(self, client: TolkienGatewayClient, db: RedbookDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
-        test_index = PageIndex(title='RetryPage', pageid=1, url='u')
-        db.insert_index(test_index)
+        test_index = CrawlIndex(title='RetryPage', pageid=1, url='u')
 
         calls = {'count': 0}
 
@@ -94,9 +92,8 @@ class TestTolkienGatewayClient:
         assert db.document_count() == 1
 
     def test_crawl_skips_existing_page(self, client: TolkienGatewayClient, db: RedbookDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
-        existing_index = PageIndex(title='Existing', pageid=10, url='http://example/existing')
+        existing_index = CrawlIndex(title='Existing', pageid=10, url='http://example/existing')
         existing_page = Page(title='Existing', pageid=10, url='http://example/existing', content='already there')
-        db.insert_index(existing_index)
         db.insert_document(existing_page)
 
         def fail_if_called(_title: str) -> Page:

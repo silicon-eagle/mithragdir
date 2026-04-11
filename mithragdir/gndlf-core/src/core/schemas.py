@@ -35,7 +35,7 @@ class Document(BaseModel):
         )
 
 
-class PageIndex(BaseModel):
+class CrawlIndex(BaseModel):
     pageid: int
     title: str
     url: str

@@ -56,7 +56,7 @@ def delete_db(dev: bool) -> None:
     db.close()
 
     target_name = 'dev' if dev else 'prd'
-    click.echo(f'Dropped database tables for {target_name}: chunks, text, wiki_page, page_index, document')
+    click.echo(f'Dropped database tables for {target_name}: chunks, text, wiki_page, document')
 
 
 if __name__ == '__main__':
