@@ -51,30 +51,6 @@ build-backend = 'hatchling.build'
 [tool.hatch.build.targets.wheel]
 packages = ['src/pipeline']
 
-# Pytest configuration (adjust coverage targets to your actual packages)
-[tool.pytest.ini_options]
-addopts = [
-    # '--cov=pipeline',
-    # '--cov-report=xml',
-    # '--junitxml=test-results.xml',
-    '-s', # write logging in the CLI
-    # '-m', # add marks
-    # 'not llm',
-]
-
-testpaths = ['tests']
-filterwarnings = ['ignore::DeprecationWarning']
-markers = [
-    'llm: marks tests that call the LLM / external openai services.',
-    'slow: marks tests as slow.'
-]
-
-pythonpath = ['.', 'pipeline', 'tests']
-asyncio_mode = 'auto'
-
-[tool.pytest_env]
-DI_UTILS_USER_AGENT = 'pipeline-client'
-
 
 # Coverage configuration
 [tool.coverage.run]

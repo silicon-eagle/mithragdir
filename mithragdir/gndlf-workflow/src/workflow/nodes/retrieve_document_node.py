@@ -28,7 +28,7 @@ from .node import Node
 class RetrieveDocumentNode(Node):
     def __init__(self) -> None:
         super().__init__('retrieve_document')
-        self.collection_name = os.getenv('PRD_QDRANT_COLLECTION', DEFAULT_QDRANT_COLLECTION)
+        self.collection_name = os.getenv('QDRANT_COLLECTION', DEFAULT_QDRANT_COLLECTION)
         self.dense_vector_name = os.getenv('QDRANT_DENSE_VECTOR_NAME', DEFAULT_DENSE_VECTOR_NAME)
         self.sparse_vector_name = os.getenv('QDRANT_SPARSE_VECTOR_NAME', DEFAULT_SPARSE_VECTOR_NAME)
         self.late_interaction_vector_name = os.getenv('QDRANT_LATE_INTERACTION_VECTOR_NAME', DEFAULT_LATE_INTERACTION_VECTOR_NAME)
@@ -43,15 +43,15 @@ class RetrieveDocumentNode(Node):
         )
 
     def _get_qdrant_client(self) -> QdrantClient:
-        qdrant_url = os.getenv('PRD_QDRANT_URL', DEFAULT_QDRANT_URL)
+        qdrant_url = os.getenv('QDRANT_URL', DEFAULT_QDRANT_URL)
         if qdrant_url == ':memory:':
             return QdrantClient(location=':memory:')
         return QdrantClient(url=qdrant_url)
 
     def _get_database(self) -> RedbookDatabase:
-        db_url = os.getenv('DATABASE_URL') or os.getenv('PRD_DATABASE_URL')
+        db_url = os.getenv('DATABASE_URL')
         if not db_url:
-            raise ValueError('DATABASE_URL or PRD_DATABASE_URL must be set for retrieval')
+            raise ValueError('DATABASE_URL must be set for retrieval')
         return RedbookDatabase(db_url=db_url)
 
     def _hydrate_documents(self, document_ids: list[int]) -> list[Document]:

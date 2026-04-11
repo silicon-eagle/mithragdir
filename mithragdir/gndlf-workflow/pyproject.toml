@@ -45,18 +45,6 @@ build-backend = 'hatchling.build'
 [tool.hatch.build.targets.wheel]
 packages = ['src/workflow']
 
-[tool.pytest.ini_options]
-addopts = [
-	'-s',
-]
-testpaths = ['tests']
-filterwarnings = ['ignore::DeprecationWarning']
-pythonpath = ['.', 'workflow', 'tests']
-asyncio_mode = 'auto'
-
-[tool.pytest_env]
-DI_UTILS_USER_AGENT = 'workflow-api-client'
-
 [tool.coverage.run]
 branch = true
 source = ['workflow']

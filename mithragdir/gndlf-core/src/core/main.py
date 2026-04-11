@@ -15,8 +15,8 @@ def cli() -> None:
     """gndlf-core database utilities."""
 
 
-def _resolve_db_url(target: str) -> str:
-    env_var = 'PRD_DATABASE_URL' if target == 'prd' else 'DEV_DATABASE_URL'
+def _resolve_db_url(dev: bool) -> str:
+    env_var = 'DEV_DATABASE_URL' if dev else 'DATABASE_URL'
     db_url = os.getenv(env_var)
     if not db_url:
         raise click.UsageError(f'Missing database URL. Set {env_var}.')
@@ -25,42 +25,38 @@ def _resolve_db_url(target: str) -> str:
 
 @cli.command('init-db')
 @click.option(
-    '--target',
-    type=click.Choice(['prd', 'dev'], case_sensitive=False),
-    default='prd',
-    show_default=True,
-    help='Database target environment.',
+    '--dev',
+    is_flag=True,
+    help='Use DEV_DATABASE_URL.',
 )
-def init_db(target: str) -> None:
+def init_db(dev: bool) -> None:
     """Initialize database tables."""
-    normalized_target = target.lower()
-    resolved_db_url = _resolve_db_url(normalized_target)
+    resolved_db_url = _resolve_db_url(dev)
 
     db = RedbookDatabase(db_url=resolved_db_url)
     db.deploy()
     db.close()
 
-    click.echo(f'Database initialized for {normalized_target}.')
+    target_name = 'dev' if dev else 'prd'
+    click.echo(f'Database initialized for {target_name}.')
 
 
 @cli.command('delete-db')
 @click.option(
-    '--target',
-    type=click.Choice(['prd', 'dev'], case_sensitive=False),
-    default='prd',
-    show_default=True,
-    help='Database target environment.',
+    '--dev',
+    is_flag=True,
+    help='Use DEV_DATABASE_URL.',
 )
-def delete_db(target: str) -> None:
+def delete_db(dev: bool) -> None:
     """Delete all application tables from PostgreSQL."""
-    normalized_target = target.lower()
-    resolved_db_url = _resolve_db_url(normalized_target)
+    resolved_db_url = _resolve_db_url(dev)
 
     db = RedbookDatabase(db_url=resolved_db_url)
     db.delete_all_tables()
     db.close()
 
-    click.echo(f'Dropped database tables for {normalized_target}: chunks, text, wiki_page, page_index, document')
+    target_name = 'dev' if dev else 'prd'
+    click.echo(f'Dropped database tables for {target_name}: chunks, text, wiki_page, page_index, document')
 
 
 if __name__ == '__main__':

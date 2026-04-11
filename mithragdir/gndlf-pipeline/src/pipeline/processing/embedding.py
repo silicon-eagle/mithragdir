@@ -58,7 +58,7 @@ class ChunkEmbedder:
             sparse_model_name: Default sparse model identifier.
             sparse_vector_name: Name of the sparse vector field in Qdrant.
             collection_name: Qdrant collection name for stored chunk vectors.
-            qdrant_url: Qdrant HTTP endpoint. If None, uses `PRD_QDRANT_URL`
+            qdrant_url: Qdrant HTTP endpoint. If None, uses `QDRANT_URL`
                 env var.
             late_interaction_model_name: Default ColBERT-style model
                 identifier.
@@ -75,9 +75,9 @@ class ChunkEmbedder:
         self.late_interaction_model_name = late_interaction_model_name
         self.late_interaction_vector_name = late_interaction_vector_name
 
-        if qdrant_url is None and os.getenv('PRD_QDRANT_URL') is None:
-            raise ValueError('Qdrant URL must be provided via argument or PRD_QDRANT_URL env var.')
-        self.qdrant_url = qdrant_url or os.getenv('PRD_QDRANT_URL')
+        if qdrant_url is None and os.getenv('QDRANT_URL') is None:
+            raise ValueError('Qdrant URL must be provided via argument or QDRANT_URL env var.')
+        self.qdrant_url = qdrant_url or os.getenv('QDRANT_URL')
         self.collection_name = collection_name
         self._dense_model: SentenceTransformer | None = None
         self._sparse_model: SparseTextEmbedding | None = None

@@ -84,9 +84,9 @@ def _copy_table(
 )
 @click.option(
     '--postgres-url',
-    envvar='PRD_DATABASE_URL',
+    envvar='DATABASE_URL',
     default=None,
-    help='PostgreSQL connection URL. Defaults to PRD_DATABASE_URL.',
+    help='PostgreSQL connection URL. Defaults to DATABASE_URL.',
 )
 def main(sqlite_path: Path, postgres_url: str) -> None:
     """Migrate data from SQLite to PostgreSQL."""
@@ -94,7 +94,7 @@ def main(sqlite_path: Path, postgres_url: str) -> None:
         raise click.UsageError(f'SQLite file does not exist: {sqlite_path}')
 
     if not postgres_url:
-        raise click.UsageError('Missing PostgreSQL URL. Provide --postgres-url or set PRD_DATABASE_URL.')
+        raise click.UsageError('Missing PostgreSQL URL. Provide --postgres-url or set DATABASE_URL.')
 
     sqlite_connection = sqlite3.connect(str(sqlite_path))
     postgres_connection = psycopg2.connect(postgres_url)

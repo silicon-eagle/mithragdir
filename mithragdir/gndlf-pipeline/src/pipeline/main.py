@@ -52,20 +52,23 @@ def _setup_logger(level: str, log_dir: Path, fmt: str | None = None) -> None:
 
 
 @click.group()
-@click.option('--db-url', default=None, envvar='PRD_DATABASE_URL', help='Postgres database URL. Defaults to PRD_DATABASE_URL.')
+@click.option('--db-url', default=None, envvar='DATABASE_URL', help='Postgres database URL. Defaults to DATABASE_URL.')
+@click.option('--dev', is_flag=True, help='Use DEV environment variables.')
 @click.option('--log-level', default='INFO', show_default=True)
 @click.option('--log-dir', type=click.Path(path_type=Path), default=DEFAULT_LOG_DIR, show_default=True)
 @click.pass_context
-def cli(ctx: click.Context, db_url: str | None, log_level: str, log_dir: Path) -> None:
+def cli(ctx: click.Context, db_url: str | None, dev: bool, log_level: str, log_dir: Path) -> None:
     """Pipeline: Data ingestion, chunking, and embedding pipeline."""
     load_dotenv(dotenv_path=PROJECT_ROOT / '.env')
     _setup_logger(level=log_level, log_dir=log_dir)
 
-    resolved_db_url = db_url or os.getenv('PRD_DATABASE_URL')
+    env_var = 'DEV_DATABASE_URL' if dev else 'DATABASE_URL'
+    resolved_db_url = db_url or os.getenv(env_var)
 
     ctx.ensure_object(dict)
     ctx.obj['db_url'] = resolved_db_url
     ctx.obj['db'] = RedbookDatabase(db_url=resolved_db_url)
+    ctx.obj['dev'] = dev
     ctx.obj['db'].deploy()
 
     # Display database connection info to terminal
@@ -78,7 +81,7 @@ def cli(ctx: click.Context, db_url: str | None, log_level: str, log_dir: Path) -
         else:
             click.echo('Database connected via --db-url', err=True)
     else:
-        click.echo('Database connected via PRD_DATABASE_URL environment variable', err=True)
+        click.echo(f'Database connected via {env_var} environment variable', err=True)
 
 
 @cli.command(name='wiki')
@@ -170,7 +173,7 @@ def wiki_cmd(
 @click.option('--chunk-tokenizer-name', default=DEFAULT_CHUNK_TOKENIZER_NAME, show_default=True)
 @click.option('--encode-document-id', type=int, default=None, help='Optional document_id filter when encoding chunks.')
 @click.option('--encode-batch-size', default=32, type=int, show_default=True)
-@click.option('--qdrant-url', default=None, envvar='PRD_QDRANT_URL', help='Qdrant URL. Defaults to PRD_QDRANT_URL.')
+@click.option('--qdrant-url', default=None, envvar='QDRANT_URL', help='Qdrant URL. Defaults to QDRANT_URL.')
 @click.option('--qdrant-collection-name', default='gwaihir_chunks', show_default=True)
 @click.option('--dense-model-name', default='google/embeddinggemma-300m', show_default=True)
 @click.option('--sparse-model-name', default='Qdrant/bm25', show_default=True)
@@ -198,6 +201,10 @@ def pipeline_cmd(
 ) -> None:
     """Clear and/or run chunking and embedding pipeline."""
     db = obj['db']
+    dev = obj.get('dev', False)
+
+    qdrant_env_var = 'DEV_QDRANT_URL' if dev else 'QDRANT_URL'
+    resolved_qdrant_url = qdrant_url or os.getenv(qdrant_env_var)
 
     if not clear and not run:
         raise click.UsageError('Specify at least one action: --clear and/or --run.')
@@ -220,7 +227,7 @@ def pipeline_cmd(
             sparse_model_name=sparse_model_name,
             sparse_vector_name=sparse_vector_name,
             collection_name=qdrant_collection_name,
-            qdrant_url=qdrant_url,
+            qdrant_url=resolved_qdrant_url,
         )
         embedder.reset_collection()
         click.echo(f'Cleared embeddings in qdrant collection {qdrant_collection_name}', err=True)
@@ -244,7 +251,7 @@ def pipeline_cmd(
             sparse_model_name=sparse_model_name,
             sparse_vector_name=sparse_vector_name,
             collection_name=qdrant_collection_name,
-            qdrant_url=qdrant_url,
+            qdrant_url=resolved_qdrant_url,
         )
         upserted = embedder.encode_and_upsert_hybrid_chunks(
             document_id=encode_document_id,

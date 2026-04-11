@@ -15,8 +15,8 @@ uv run gndlf-core --help
 ### Initialize Database
 
 Uses `--target` with env vars from `.env`:
-- `--target prd` -> `PRD_DATABASE_URL`
-- `--target dev` -> `DEV_DATABASE_URL`
+- `--dev` -> `DEV_DATABASE_URL`, otherwise `DATABASE_URL`
+
 
 ```bash
 uv run gndlf-core init-db
