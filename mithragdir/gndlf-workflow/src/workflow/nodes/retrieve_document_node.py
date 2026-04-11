@@ -26,9 +26,9 @@ from .node import Node
 
 
 class RetrieveDocumentNode(Node):
-    def __init__(self) -> None:
+    def __init__(self, collection_name: str | None = None) -> None:
         super().__init__('retrieve_document')
-        self.collection_name = os.getenv('QDRANT_COLLECTION', DEFAULT_QDRANT_COLLECTION)
+        self.collection_name = collection_name or os.getenv('QDRANT_COLLECTION', DEFAULT_QDRANT_COLLECTION)
         self.dense_vector_name = os.getenv('QDRANT_DENSE_VECTOR_NAME', DEFAULT_DENSE_VECTOR_NAME)
         self.sparse_vector_name = os.getenv('QDRANT_SPARSE_VECTOR_NAME', DEFAULT_SPARSE_VECTOR_NAME)
         self.late_interaction_vector_name = os.getenv('QDRANT_LATE_INTERACTION_VECTOR_NAME', DEFAULT_LATE_INTERACTION_VECTOR_NAME)

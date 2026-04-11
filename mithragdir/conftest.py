@@ -32,9 +32,11 @@ def skip_if_missing_env_vars(setup_environment: bool) -> None:
 
 
 @pytest.fixture(autouse=True)
-def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env(setup_environment: bool, monkeypatch: pytest.MonkeyPatch) -> None:
     """Set test environment using DEV variations."""
     logger.info('Setting test environment variables for database and Qdrant URLs.')
+    if not setup_environment:
+        pytest.skip('Skipping test because the environment variables could not be loaded from the .env file.')
     dev_db = os.environ.get('DEV_DATABASE_URL')
     dev_qd = os.environ.get('DEV_QDRANT_URL')
     if not dev_db or not dev_qd:

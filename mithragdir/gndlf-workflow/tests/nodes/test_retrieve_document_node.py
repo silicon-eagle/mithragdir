@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from typing import TypedDict
 
 import pytest
 from core.config import DEFAULT_QDRANT_URL
@@ -14,8 +15,16 @@ from workflow.graph.state import GraphState
 from workflow.nodes.retrieve_document_node import RetrieveDocumentNode
 
 
+class SeededRetrievalDocument(TypedDict):
+    document_id: int
+    title: str
+    chunk_count: int
+    point_count: int
+    collection_name: str
+
+
 @pytest.fixture
-def seeded_retrieval_document() -> Iterator[dict[str, int | str]]:
+def seeded_retrieval_document() -> Iterator[SeededRetrievalDocument]:
     collection_name = f'workflow_retrieve_{uuid.uuid4().hex[:8]}'
 
     db = RedbookDatabase(db_url=os.getenv('DATABASE_URL'))
@@ -46,6 +55,7 @@ def seeded_retrieval_document() -> Iterator[dict[str, int | str]]:
             'title': seed_text.title,
             'chunk_count': chunk_count,
             'point_count': point_count,
+            'collection_name': collection_name,
         }
     finally:
         embedder.qdrant_client.delete_collection(collection_name=collection_name)
@@ -53,8 +63,8 @@ def seeded_retrieval_document() -> Iterator[dict[str, int | str]]:
         db.close()
 
 
-async def test_retrieve_document_node_integration(seeded_retrieval_document: dict[str, int | str]) -> None:
-    node = RetrieveDocumentNode()
+async def test_retrieve_document_node_integration(seeded_retrieval_document: SeededRetrievalDocument) -> None:
+    node = RetrieveDocumentNode(collection_name=seeded_retrieval_document['collection_name'])
     state = GraphState(
         query='Where is the Last Homely House east of the Misty Mountains?',
         generated_query='Rivendell Last Homely House east of the Misty Mountains Elrond valley',
