@@ -6,6 +6,7 @@ from typing import Any
 
 import click
 from bs4 import BeautifulSoup
+from core.config import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_TOKENIZER_NAME
 from core.db import RedbookDatabase
 from core.models import Chunk, Document, Text, WikiPage
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -60,10 +61,10 @@ class Chunker:
     def __init__(
         self,
         db: RedbookDatabase,
-        chunk_size: int = 512,
-        chunk_overlap: int = 64,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
         chunk_unit: ChunkUnit = ChunkUnit.CHARACTERS,
-        tokenizer_name: str = 'google/embeddinggemma-300m',
+        tokenizer_name: str = DEFAULT_CHUNK_TOKENIZER_NAME,
     ) -> None:
         """Configure text and HTML chunking strategies.
 

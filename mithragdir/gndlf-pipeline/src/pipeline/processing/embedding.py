@@ -4,6 +4,17 @@ import os
 from collections.abc import Sequence
 
 import click
+from core.config import (
+    DEFAULT_DENSE_MODEL,
+    DEFAULT_DENSE_VECTOR_NAME,
+    DEFAULT_LATE_INTERACTION_MODEL,
+    DEFAULT_LATE_INTERACTION_VECTOR_NAME,
+    DEFAULT_QDRANT_COLLECTION,
+    DEFAULT_QDRANT_TIMEOUT_SECONDS,
+    DEFAULT_SPARSE_MODEL,
+    DEFAULT_SPARSE_VECTOR_NAME,
+    DEFAULT_UPSERT_SLICE_SIZE,
+)
 from core.db import RedbookDatabase
 from core.models import Chunk
 from fastembed import LateInteractionTextEmbedding, SparseTextEmbedding
@@ -21,16 +32,6 @@ from qdrant_client.models import (
     VectorParams,
 )
 from sentence_transformers import SentenceTransformer
-
-DEFAULT_DENSE_MODEL = 'google/embeddinggemma-300m'
-DEFAULT_SPARSE_MODEL = 'Qdrant/bm25'
-DEFAULT_LATE_INTERACTION_MODEL = 'colbert-ir/colbertv2.0'
-DEFAULT_QDRANT_COLLECTION = 'gwaihir_chunks'
-DEFAULT_DENSE_VECTOR_NAME = 'dense'
-DEFAULT_SPARSE_VECTOR_NAME = 'sparse'
-DEFAULT_LATE_INTERACTION_VECTOR_NAME = 'late_interaction'
-DEFAULT_QDRANT_TIMEOUT_SECONDS = 300
-DEFAULT_UPSERT_SLICE_SIZE = 8
 
 
 class ChunkEmbedder:

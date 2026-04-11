@@ -1,21 +1,75 @@
 from collections.abc import Callable
 
+from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+
+from ..nodes import (
+    ConversationalLLMNode,
+    FinalCheckNode,
+    GenerateAnswerNode,
+    GenerateQueryNode,
+    GuardrailRoutingNode,
+    RefuseAnswerNode,
+    RetrieveDocumentNode,
+)
 from .state import GraphState
 
 
-def create_grade_routing_function(max_attempts: int = 3) -> Callable:
-    """Create a routing function that grades the relevance of retrieved documents and routes accordingly.
+def create_final_check_routing(max_attempts: int = 3) -> Callable[[GraphState], str]:
+    """Create routing for answer self-correction and retry exhaustion handling."""
 
-    Args:
-        max_attempts: Maximum number of retries for retrieval rewrite if documents are not relevant.
+    def final_check_routing(state: GraphState) -> str:
+        if state.generation_grounded is False:
+            return 'generate_answer'
+        if state.generation_helpful is False:
+            if state.retry_count >= max_attempts:
+                return 'refuse_answer'
+            return 'generate_query'
+        return END
 
-    Returns:
-        A routing function that can be used in the graph to route based on document relevance.
-    """
+    return final_check_routing
 
-    def grade_routing(state: GraphState) -> str:
-        assert state
-        assert max_attempts > 0
-        return ''
 
-    return grade_routing
+def compile_graph() -> CompiledStateGraph:
+    """Compiles the execution graph for the Agentic RAG workflow."""
+    builder = StateGraph(GraphState)
+
+    # 1. Add Nodes
+    builder.add_node('guardrail_routing', GuardrailRoutingNode())
+    builder.add_node('conversational_llm', ConversationalLLMNode())
+    builder.add_node('generate_query', GenerateQueryNode())
+    builder.add_node('retrieve_document', RetrieveDocumentNode())
+    builder.add_node('generate_answer', GenerateAnswerNode())
+    builder.add_node('grade_generation', FinalCheckNode())
+    builder.add_node('refuse_answer', RefuseAnswerNode())
+
+    # 2. Set Entry Point
+    builder.set_entry_point('guardrail_routing')
+
+    # 3. Add Edges & Conditional Routing
+    # Guardrail routing handles both validation and query routing in one node.
+    builder.add_conditional_edges(
+        'guardrail_routing',
+        lambda state: 'refuse_answer' if state.guardrail_passed is False else (state.route or 'generate_query'),
+    )
+
+    # Conversational flow completes immediately
+    builder.add_edge('conversational_llm', END)
+
+    # Retrieval flow sequence
+    builder.add_edge('generate_query', 'retrieve_document')
+    builder.add_edge('retrieve_document', 'generate_answer')
+
+    # Generation flow sequence
+    builder.add_edge('generate_answer', 'grade_generation')
+
+    # Final check self-correction condition
+    builder.add_conditional_edges(
+        'grade_generation',
+        create_final_check_routing(max_attempts=3),
+    )
+
+    # Refusal node ends the graph
+    builder.add_edge('refuse_answer', END)
+
+    return builder.compile()

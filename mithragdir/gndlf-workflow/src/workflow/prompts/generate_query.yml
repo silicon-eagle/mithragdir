@@ -1,0 +1,14 @@
+_type: prompt
+input_variables:
+  - query
+template: |
+  Rewrite query into concise retrieval query for Tolkien corpus search.
+
+  Rules:
+  - Keep key entities, aliases, places, and timeline hints.
+  - Remove social filler.
+  - Keep output on one line.
+  - Do not explain.
+
+  User query:
+  {query}

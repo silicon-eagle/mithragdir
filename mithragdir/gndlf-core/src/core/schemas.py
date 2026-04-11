@@ -1,6 +1,38 @@
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
+
+from core.models import Document as PeeweeDocument
+
+
+class Document(BaseModel):
+    document_id: int
+    title: str
+    url: str | None = None
+    raw_content: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_peewee(cls, document: PeeweeDocument) -> 'Document':
+        data = document.__data__
+        title_value = data.get('title')
+        url_value = data.get('url')
+        raw_content_value = data.get('raw_content')
+        created_at_value = data.get('created_at')
+
+        if not isinstance(created_at_value, datetime):
+            raise ValueError('Document.created_at must be a datetime')
+
+        return cls(
+            document_id=int(document.get_id()),
+            title=str(title_value),
+            url=None if url_value is None else str(url_value),
+            raw_content=str(raw_content_value),
+            created_at=created_at_value,
+        )
 
 
 class PageIndex(BaseModel):
