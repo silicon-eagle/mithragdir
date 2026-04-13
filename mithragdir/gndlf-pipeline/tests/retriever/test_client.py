@@ -36,6 +36,7 @@ class TestTolkienGatewayClient:
         assert 'https://github.com/silicon-eagle/' in user_agent
         assert 'silicon.eagle@pm.me' in user_agent
 
+    @pytest.mark.requires_http
     def test_get_index_with_small_limit(self, client: TolkienGatewayClient) -> None:
         pages = client.get_index(limit=2)
         assert len(pages) == 2
@@ -44,6 +45,7 @@ class TestTolkienGatewayClient:
         assert all(page.pageid > 0 for page in pages)
         assert all(page.url.startswith('https://tolkiengateway.net/wiki/') for page in pages)
 
+    @pytest.mark.requires_http
     def test_get_page_returns_content(self, client: TolkienGatewayClient) -> None:
         page = client.get_page('Gandalf')
         assert page.title
@@ -63,6 +65,7 @@ class TestTolkienGatewayClient:
         client.store_page(pages[-1])
         assert db.document_count() == 25
 
+    @pytest.mark.requires_http
     def test_crawl_limited(self, client: TolkienGatewayClient, db: RedbookDatabase) -> None:
         nr_pages = 10
         index = client.get_index(limit=nr_pages, batch_size=int(ceil(nr_pages / 2)), pause_seconds=0.5)

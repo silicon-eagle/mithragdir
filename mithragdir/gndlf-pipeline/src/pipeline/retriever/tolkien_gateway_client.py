@@ -102,6 +102,23 @@ class TolkienGatewayClient:
             raise RuntimeError(f'MediaWiki API error: {error}')
         return payload
 
+    def probe_api_not_ok(self) -> bool:
+        """Probe API availability using the existing client session.
+
+        Returns:
+            True when probe does not return HTTP 200 or request fails.
+        """
+        try:
+            response = self._session.get(
+                self.api_url,
+                params={'action': 'query', 'format': 'json', 'meta': 'siteinfo'},
+                timeout=self.timeout_seconds,
+            )
+            return response.status_code != 200
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f'API probe failed with exception: {exc}')
+            return True
+
     def _build_page_url(self, title: str) -> str:
         """Build a canonical wiki URL for a page title.
 
