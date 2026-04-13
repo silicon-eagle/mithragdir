@@ -48,6 +48,9 @@ def compile_graph() -> CompiledStateGraph:
 
     # 3. Add Edges & Conditional Routing
     # Guardrail routing handles both validation and query routing in one node.
+    # - Refuse answer if guardrail fails.
+    # - Route to conversational_llm, generate_query, or refuse_answer based on guardrail results.
+    # Default to generate_query if route is missing but guardrail passed.
     builder.add_conditional_edges(
         'guardrail_routing',
         lambda state: 'refuse_answer' if state.guardrail_passed is False else (state.route or 'generate_query'),
