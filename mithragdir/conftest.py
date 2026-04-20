@@ -43,4 +43,20 @@ def test_env(setup_environment: bool, monkeypatch: pytest.MonkeyPatch) -> None:
         pytest.skip('Skipping test because DEV_DATABASE_URL or DEV_QDRANT_URL is missing.')
 
     monkeypatch.setenv('DATABASE_URL', dev_db)
+    logger.info(f'Overwriting DATABASE_URL for testing: {dev_db}')
     monkeypatch.setenv('QDRANT_URL', dev_qd)
+    logger.info(f'Overwriting QDRANT_URL for testing: {dev_qd}')
+
+
+@pytest.fixture
+def prod_db_env(setup_environment: bool, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set environment using production DATABASE_URL and QDRANT_URL."""
+    if not setup_environment:
+        pytest.skip('Skipping test because the environment variables could not be loaded from the .env file.')
+    db = os.environ.get('DATABASE_URL')
+    qd = os.environ.get('QDRANT_URL')
+    if not db or not qd:
+        pytest.skip('Skipping test because DATABASE_URL or QDRANT_URL is missing.')
+
+    monkeypatch.setenv('DATABASE_URL', db)
+    monkeypatch.setenv('QDRANT_URL', qd)

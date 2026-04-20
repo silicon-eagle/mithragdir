@@ -81,7 +81,6 @@ class TestChunkEmbedder:
 
         embedder.qdrant_client.delete_collection(collection_name=collection_name)
 
-    @pytest.mark.llm
     def test_encode_and_upsert_hybrid_chunks_upserts_points(self, db: RedbookDatabase) -> None:
         document_id = db.insert_text(
             Text(

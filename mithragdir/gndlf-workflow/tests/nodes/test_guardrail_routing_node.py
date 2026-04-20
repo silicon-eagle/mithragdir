@@ -19,5 +19,5 @@ async def test_guardrail_routing_node_integration(query: str, expected_passed: b
     assert 'guardrail_passed' in result
     assert 'route' in result
     assert isinstance(result['guardrail_passed'], bool)
-    assert result['route'] in {'conversational_llm', 'generate_query', 'refuse_answer'}
+    assert result['route'] in {'generate_query', 'refuse_answer'}
     assert result['guardrail_passed'] == expected_passed

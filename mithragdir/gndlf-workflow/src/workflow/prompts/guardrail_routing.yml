@@ -10,15 +10,6 @@ template: |
   2) route: if accepted, should it go to conversational or retrieval?
 
   Route definitions:
-  - conversational_llm:
-    For short social interaction that does not need lore retrieval.
-    Examples:
-    - "hi"
-    - "thanks"
-    - "how are you"
-    - "good morning"
-    - "can you help me with Tolkien questions"
-
   - generate_query:
     For Tolkien factual/lore requests that require grounded source lookup.
     Examples:
@@ -66,5 +57,5 @@ template: |
 
   Output format (strict):
   Return exactly one JSON object on one line with keys in this order:
-  {{"guardrail_passed": true|false, "route": "conversational_llm"|"generate_query"|"refuse_answer", "reason": "short reason"}}
+  {{"guardrail_passed": true|false, "route": "generate_query"|"refuse_answer", "reason": "short reason"}}
   No markdown. No extra text.

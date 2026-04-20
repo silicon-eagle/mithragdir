@@ -20,9 +20,7 @@ class GraphState(BaseModel):
     query: str = Field(default='', description='The original query that triggered the graph execution')
     current_state: str = Field(default='', description='The name of the current workflow node that last updated the state')
     generated_query: str = Field(default='', description='The retrieval-optimized query generated from the original user query')
-    route: Literal['', 'conversational_llm', 'generate_query', 'refuse_answer'] = Field(
-        default='', description='The query route selected by the routing node'
-    )
+    route: Literal['', 'generate_query', 'refuse_answer'] = Field(default='', description='The query route selected by the routing node')
     guardrail_passed: bool | None = Field(default=None, description='Whether the guardrail check accepted the user query')
     retry_count: int = Field(default=0, ge=0, description='How many retrieval rewrite retries have been attempted')
     generation: str = Field(default='', description='The latest drafted answer generated from retrieved context')

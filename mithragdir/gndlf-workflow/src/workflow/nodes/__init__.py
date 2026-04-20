@@ -6,7 +6,6 @@ from .guardrail_routing_node import GuardrailRoutingNode
 from .node import Node
 from .refuse_answer_node import RefuseAnswerNode
 from .retrieve_document_node import RetrieveDocumentNode
-from .route_query_node import RouteQueryNode
 
 __all__ = [
     'ConversationalLLMNode',
@@ -17,5 +16,4 @@ __all__ = [
     'Node',
     'RefuseAnswerNode',
     'RetrieveDocumentNode',
-    'RouteQueryNode',
 ]

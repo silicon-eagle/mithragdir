@@ -1,8 +1,9 @@
 import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from langchain_ollama import ChatOllama
 from loguru import logger
@@ -15,9 +16,19 @@ class Node(ABC):
     def __init__(self, name: str) -> None:
         self.name: str = name
         self.model: ChatOllama = get_llm_client()
-
         self.logger = logger.bind(node=self.name)
-        self.logger.debug('Initialized node')
+
+    def __init_subclass__(cls) -> None:
+        """Wrap subclass __call__ to add logging before execution."""
+        super().__init_subclass__()
+        original_call = cls.__call__
+
+        @wraps(original_call)
+        async def logged_call(self: Self, state: GraphState) -> dict[str, Any]:
+            self.logger.info(f'Starting call for node {self.name}')
+            return await original_call(self, state)
+
+        cls.__call__ = logged_call
 
     @abstractmethod
     async def __call__(self, state: GraphState) -> dict[str, Any]:

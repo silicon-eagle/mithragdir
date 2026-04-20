@@ -9,7 +9,7 @@ from .node import Node
 
 class GuardrailRoutingOutput(BaseModel):
     guardrail_passed: bool
-    route: Literal['conversational_llm', 'generate_query', 'refuse_answer']
+    route: Literal['generate_query', 'refuse_answer']
     reason: str
 
 
@@ -18,7 +18,7 @@ class GuardrailRoutingNode(Node):
         super().__init__('guardrail_routing')
 
     async def __call__(self, state: GraphState) -> dict[str, str | bool]:
-        """Validates safety/domain and decides conversational vs retrieval route."""
+        """Validates safety/domain and routes to retrieval or refusal."""
         self.logger.info(f'Running {self.name} node')
 
         query = state.query.strip()
