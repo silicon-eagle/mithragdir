@@ -21,9 +21,10 @@ A Tolkien knowledge base service that ingests wiki data, chunks it, and generate
 
 2. **Start containers:**
    ```bash
-   docker compose -f docker-compose.postgres.yml up -d
-   docker compose -f docker-compose.qdrant.yml up -d
+   docker compose up -d postgres-prd postgres-dev qdrant-prd qdrant-dev ollama-gateway
    ```
+
+   **Or use VS Code Dev Containers:** open workspace in container. This uses `.devcontainer/devcontainer.json`, starts same services, and runs `uv sync --all-groups`.
 
 3. **Set environment:**
    ```bash
@@ -61,7 +62,7 @@ See [gndlf-pipeline/README.md](gndlf-pipeline/README.md) for detailed CLI docume
 
 - **Backend:** PostgreSQL
 - **ORM:** Peewee
-- **Container:** `redbook-postgress` (via `docker-compose.postgres.yml`)
+- **Containers:** `redbook-postgress-prd`, `redbook-postgress-dev` (via `docker-compose.yml`)
 
 ### Database Commands
 
@@ -90,7 +91,7 @@ See [gndlf-core/README.md](gndlf-core/README.md) for full database documentation
 
 - **Backend:** Qdrant
 - **Collection:** `gwaihir_chunks` (hybrid: dense + sparse)
-- **Container:** `redbook-qdrant` (via `docker-compose.qdrant.yml`)
+- **Containers:** `redbook-qdrant-prd`, `redbook-qdrant-dev` (via `docker-compose.yml`)
 
 ## Embedding Model
 

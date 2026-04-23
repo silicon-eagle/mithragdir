@@ -1,7 +1,6 @@
 from typing import Any
 
 from langchain_core.prompts import load_prompt
-from loguru import logger
 
 from ..graph.state import GraphState
 from .node import Node
@@ -13,7 +12,7 @@ class ConversationalLLMNode(Node):
 
     async def __call__(self, state: GraphState) -> dict[str, Any]:
         """Handles general, non-lore chat without triggering the retrieval pipeline."""
-        logger.info(f'Running {self.name} node')
+        self.logger.info(f'Running {self.name} node')
         assert state
 
         if not state.query.strip():

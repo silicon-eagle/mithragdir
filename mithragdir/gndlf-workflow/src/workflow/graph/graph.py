@@ -1,3 +1,4 @@
+import os
 from collections.abc import Callable
 
 from langgraph.graph import END, StateGraph
@@ -19,7 +20,9 @@ def create_final_check_routing(max_attempts: int = 3) -> Callable[[GraphState], 
 
     def final_check_routing(state: GraphState) -> str:
         if state.generation_grounded is False:
-            return 'generate_answer'
+            if state.retry_count >= max_attempts:
+                return 'refuse_answer'
+            return 'generate_query'
         if state.generation_helpful is False:
             if state.retry_count >= max_attempts:
                 return 'refuse_answer'
@@ -31,6 +34,7 @@ def create_final_check_routing(max_attempts: int = 3) -> Callable[[GraphState], 
 
 def compile_graph() -> CompiledStateGraph:
     """Compiles the execution graph for the Agentic RAG workflow."""
+    max_attempts = int(os.getenv('WORKFLOW_MAX_RETRY_LOOPS', '3'))
     builder = StateGraph(GraphState)
 
     # 1. Add Nodes
@@ -49,7 +53,11 @@ def compile_graph() -> CompiledStateGraph:
     # All passing queries go through retrieval (generate_query).
     builder.add_conditional_edges(
         'guardrail_routing',
-        lambda state: 'refuse_answer' if state.guardrail_passed is False else 'generate_query',
+        lambda state: (
+            state.route
+            if state.route in {'generate_query', 'refuse_answer'}
+            else ('refuse_answer' if state.guardrail_passed is False else 'generate_query')
+        ),
     )
 
     # Retrieval flow sequence
@@ -62,7 +70,7 @@ def compile_graph() -> CompiledStateGraph:
     # Final check self-correction condition
     builder.add_conditional_edges(
         'grade_generation',
-        create_final_check_routing(max_attempts=3),
+        create_final_check_routing(max_attempts=max_attempts),
     )
 
     # Refusal node ends the graph

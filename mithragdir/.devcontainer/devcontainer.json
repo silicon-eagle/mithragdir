@@ -1,0 +1,30 @@
+{
+  "name": "mithragdir",
+  "dockerComposeFile": [
+    "../docker-compose.yml"
+  ],
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+  "runServices": [
+    "postgres-prd",
+    "postgres-dev",
+    "qdrant-prd",
+    "qdrant-dev",
+    "ollama-gateway",
+    "workspace"
+  ],
+  "shutdownAction": "stopCompose",
+  "postCreateCommand": "uv sync --all-groups",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/workspace/.venv/bin/python"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff"
+      ]
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from typing import Any
 
 from core.config import (
@@ -25,6 +26,21 @@ from ..graph.state import GraphState
 from .node import Node
 
 
+@lru_cache(maxsize=1)
+def get_dense_model() -> SentenceTransformer:
+    return SentenceTransformer(os.getenv('DENSE_MODEL_NAME', DEFAULT_DENSE_MODEL))
+
+
+@lru_cache(maxsize=1)
+def get_sparse_model() -> SparseTextEmbedding:
+    return SparseTextEmbedding(model_name=os.getenv('SPARSE_MODEL_NAME', DEFAULT_SPARSE_MODEL))
+
+
+@lru_cache(maxsize=1)
+def get_late_interaction_model() -> LateInteractionTextEmbedding:
+    return LateInteractionTextEmbedding(model_name=os.getenv('LATE_INTERACTION_MODEL_NAME', DEFAULT_LATE_INTERACTION_MODEL))
+
+
 class RetrieveDocumentNode(Node):
     def __init__(self, collection_name: str | None = None) -> None:
         super().__init__('retrieve_document')
@@ -35,12 +51,6 @@ class RetrieveDocumentNode(Node):
 
         self.retrieve_limit = int(os.getenv('WORKFLOW_RETRIEVE_LIMIT', str(DEFAULT_RETRIEVE_LIMIT)))
         self.prefetch_limit = int(os.getenv('WORKFLOW_RETRIEVE_PREFETCH_LIMIT', str(DEFAULT_PREFETCH_LIMIT)))
-
-        self.dense_model = SentenceTransformer(os.getenv('DENSE_MODEL_NAME', DEFAULT_DENSE_MODEL))
-        self.sparse_model = SparseTextEmbedding(model_name=os.getenv('SPARSE_MODEL_NAME', DEFAULT_SPARSE_MODEL))
-        self.late_interaction_model = LateInteractionTextEmbedding(
-            model_name=os.getenv('LATE_INTERACTION_MODEL_NAME', DEFAULT_LATE_INTERACTION_MODEL)
-        )
 
     def _get_qdrant_client(self) -> QdrantClient:
         qdrant_url = os.getenv('QDRANT_URL', DEFAULT_QDRANT_URL)
@@ -82,15 +92,15 @@ class RetrieveDocumentNode(Node):
             raise ValueError("Node 'retrieve_document' requires non-empty 'generated_query' or 'query'")
 
         try:
-            dense_vector = [float(value) for value in self.dense_model.encode([query], normalize_embeddings=True)[0]]
+            dense_vector = [float(value) for value in get_dense_model().encode([query], normalize_embeddings=True)[0]]
 
-            sparse_embedding = next(iter(self.sparse_model.embed([query])))
+            sparse_embedding = next(iter(get_sparse_model().embed([query])))
             sparse_vector = models.SparseVector(
                 indices=[int(index) for index in sparse_embedding.indices],
                 values=[float(value) for value in sparse_embedding.values],
             )
 
-            late_vector = [[float(value) for value in token_vector] for token_vector in next(iter(self.late_interaction_model.embed([query])))]
+            late_vector = [[float(value) for value in token_vector] for token_vector in next(iter(get_late_interaction_model().embed([query])))]
 
             qdrant_client = self._get_qdrant_client()
             response = qdrant_client.query_points(
@@ -104,6 +114,7 @@ class RetrieveDocumentNode(Node):
                 limit=self.retrieve_limit,
                 with_payload=True,
                 with_vectors=False,
+                timeout=60,
             )
 
             points = list(response.points) if response.points is not None else []
