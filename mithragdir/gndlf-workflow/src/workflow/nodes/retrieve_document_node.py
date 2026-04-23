@@ -83,6 +83,21 @@ class RetrieveDocumentNode(Node):
             hydrated.append(doc)
         return hydrated
 
+    def _log_retrieved_documents(self, documents: list[Document]) -> None:
+        if not documents:
+            self.logger.info('Retrieved 0 documents')
+            return
+
+        document_summaries = [
+            {
+                'document_id': document.document_id,
+                'title': document.title,
+                'url': document.url,
+            }
+            for document in documents
+        ]
+        self.logger.info(f'Retrieved {len(documents)} documents: {document_summaries}')
+
     async def __call__(self, state: GraphState) -> dict[str, Any]:
         """Executes the hybrid search against the vector database."""
         logger.info(f'Running {self.name} node')
@@ -131,6 +146,7 @@ class RetrieveDocumentNode(Node):
             db = self._get_database()
             try:
                 documents = self._hydrate_documents(document_ids)
+                self._log_retrieved_documents(documents)
             finally:
                 db.close()
         except Exception as exc:  # noqa: BLE001

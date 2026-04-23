@@ -29,6 +29,7 @@ class FinalCheckNode(Node):
             raise ValueError("Node 'grade_generation' requires non-empty 'generation'")
 
         if not state.documents:
+            self.logger.info('No documents available for grading. Marking generation ungrounded and unhelpful.')
             return {'generation_grounded': False, 'generation_helpful': False, 'current_state': self.name}
 
         context_blocks = []
@@ -49,6 +50,21 @@ class FinalCheckNode(Node):
 
         generation_grounded = result.generation_grounded
         generation_helpful = result.generation_helpful
+
+        graded_documents = [
+            {
+                'document_id': document.document_id,
+                'title': document.title,
+                'url': document.url,
+            }
+            for document in state.documents
+        ]
+        self.logger.info(
+            f'Graded generation with documents={graded_documents}, '
+            f'generation_grounded={generation_grounded}, '
+            f'generation_helpful={generation_helpful}, '
+            f'reason={result.reason}'
+        )
 
         return {
             'generation_grounded': generation_grounded,
